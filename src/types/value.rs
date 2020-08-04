@@ -13,7 +13,7 @@ pub enum JValue<'a> {
     Long(i64),
     Float(f32),
     Double(f64),
-    Object(Option<&'a JObject>)  // Option because null exists, and must be handled
+    Object(Option<JObject<'a>>)  // Option because null exists, and must be handled
 }
 
 impl<'a> JValue<'a> {
@@ -30,7 +30,7 @@ impl<'a> JValue<'a> {
         out
     }
 
-    pub fn into_obj(self) -> Result<Option<&'a JObject>, Error> {
+    pub fn into_obj(self) -> Result<Option<JObject<'a>>, Error> {
         if let JValue::Object(obj) = self {
             Ok(obj)
         } else {
@@ -184,14 +184,14 @@ impl From<f64> for JValue<'_> {
     }
 }
 
-impl<'a> From<&'a JObject> for JValue<'a> {
-    fn from(val: &'a JObject) -> Self {
+impl<'a> From<JObject<'a>> for JValue<'a> {
+    fn from(val: JObject<'a>) -> Self {
         return JValue::Object(Some(val))
     }
 }
 
-impl<'a> From<Option<&'a JObject>> for JValue<'a> {
-    fn from(val: Option<&'a JObject>) -> Self {
+impl<'a> From<Option<JObject<'a>>> for JValue<'a> {
+    fn from(val: Option<JObject<'a>>) -> Self {
         return JValue::Object(val)
     }
 }

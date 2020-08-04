@@ -2,9 +2,9 @@
 use std::ffi::CString;
 use std::slice;
 
-use crate::{ffi, JByte};
+use crate::{ffi, JByte, JNativeType, JNativeArray, JNativeSlice, ReleaseMode, JNativeVec};
 use crate::types::{JNIVersion, JType, JValue, JObject, JClass, JMethodID, JFieldID, JThrowable, JString, JArray, JObjectArray, JavaDownCast, JNonVoidType, JNINativeMethod, JavaUpCast};
-use crate::error::Error;
+use crate::error::{Error, Result};
 use crate::mangling::{mangle_class, TypeSignature};
 use crate::vm::JavaVM;
 use crate::types::jtype::JRefType;
@@ -14,8 +14,103 @@ use crate::types::object::JWeak;
 use crate::object::JByteBuffer;
 
 
+#[macro_export]
+macro_rules! get_cls {
+    ($env:ident, $cls:literal) => {
+        {
+            use $crate::types::*;
+
+            static mut CLS: Option<JClass<'static>> = None;
+            unsafe {
+                if let None = CLS {
+                    let cls = $env.new_global_ref(&$env.find_class($cls).expect(&format!("Couldn't find class {}", $cls)).downcast()).unwrap().upcast_raw();
+                    CLS = Some(cls);
+                }
+                CLS.as_ref().unwrap()
+            }
+        }
+    }
+}
+
+
+#[macro_export]
+macro_rules! get_method_id {
+    ($env:ident, $cls:ident, $name:literal, $sig:literal) => {
+        {
+            use $crate::types::*;
+
+            static mut ID: Option<JMethodID> = None;
+            unsafe {
+                if let None = ID {
+                    let id = $env.get_method_id($cls, $name, $sig).expect(&format!("Couldn't find method {} with signature {}", $name, $sig));
+                    ID = Some(id)
+                }
+                ID.as_ref().unwrap()
+            }
+        }
+    }
+}
+
+
+#[macro_export]
+macro_rules! get_static_method_id {
+    ($env:ident, $cls:ident, $name:literal, $sig:literal) => {
+        {
+            use $crate::types::*;
+
+            static mut ID: Option<JMethodID> = None;
+            unsafe {
+                if let None = ID {
+                    let id = $env.get_static_method_id($cls, $name, $sig).expect(&format!("Couldn't find method {} with signature {}", $name, $sig));
+                    ID = Some(id)
+                }
+                ID.as_ref().unwrap()
+            }
+        }
+    }
+}
+
+
+#[macro_export]
+macro_rules! get_field_id {
+    ($env:ident, $cls:ident, $name:literal, $ty:literal) => {
+        {
+            use $crate::types::*;
+
+            static mut ID: Option<JFieldID> = None;
+            unsafe {
+                if let None = ID {
+                    let id = $env.get_field_id($cls, $name, $ty).expect(&format!("Couldn't find method {} with signature {}", $name, $ty));
+                    ID = Some(id)
+                }
+                ID.as_ref().unwrap()
+            }
+        }
+    }
+}
+
+
+#[macro_export]
+macro_rules! get_static_field_id {
+    ($env:ident, $cls:ident, $name:literal, $ty:literal) => {
+        {
+            use $crate::types::*;
+
+            static mut ID: Option<JFieldID> = None;
+            unsafe {
+                if let None = ID {
+                    let id = $env.get_static_field_id($cls, $name, $ty).expect(&format!("Couldn't find method {} with signature {}", $name, $ty));
+                    ID = Some(id)
+                }
+                ID.as_ref().unwrap()
+            }
+        }
+    }
+}
+
+
 /// Handy utility for converting a `&str` into a `CString`, returning a rust_jni error on failure
-fn cstr_from_str(str: &str) -> Result<CString, Error> {
+fn cstr_from_str(str: &str) -> Result<CString> {
     CString::new(str)
         .map_err(|err| {
             Error::from(Box::new(err))
@@ -26,15 +121,14 @@ fn cstr_from_str(str: &str) -> Result<CString, Error> {
 /// Higher-level construct representing a JNIEnv
 pub struct JNIEnv {
     version: JNIVersion,
-    backing_ptr: *mut ffi::JNIEnv,
-    obj_refs: RefCell<HashMap<*mut ffi::JObject, JObject>>
+    backing_ptr: *mut ffi::JNIEnv
 }
 
 impl JNIEnv {
 
     /// Create a new JNIEnv from a pointer to an [ffi::JNIEnv]. This environment will
     /// live as long as the current thread, generally. Thus this type is not marked Send or Sync.
-    pub fn new(env: *mut ffi::JNIEnv) -> Result<JNIEnv, Error> {
+    pub fn new(env: *mut ffi::JNIEnv) -> Result<JNIEnv> {
         if env.is_null() {
             Err(Error::new("JNIEnv must be constructed from non-null pointer", ffi::constants::JNI_ERR))
         } else {
@@ -48,8 +142,7 @@ impl JNIEnv {
             }
             Ok(JNIEnv {
                 version,
-                backing_ptr: env,
-                obj_refs: RefCell::new(HashMap::new())
+                backing_ptr: env
             })
         }
     }
@@ -75,33 +168,33 @@ impl JNIEnv {
     /// Non-public, because it would be incredibly unsafe. Stores a pointer as a key and a JObject
     /// constructed from that pointer as a value, returning a reference to that JObject cast
     /// as any other smart-object.
-    fn local_ref<T, U>(&self, ptr: *mut T) -> &U {
-        let ptr = ptr as *mut ffi::JObject;
-        let mut obj_refs = self.obj_refs.borrow_mut();
+    // fn local_ref<T, U>(&self, ptr: *mut T) -> &U {
+    //     let ptr = ptr as *mut ffi::JObject;
+    //     let mut obj_refs = self.obj_refs.borrow_mut();
+    //
+    //     if !obj_refs.contains_key(&ptr) {
+    //         let obj = JObject::new(ptr).expect("Built local reference from invalid pointer");
+    //         obj_refs.insert(ptr, obj);
+    //     }
+    //
+    //     // SAFETY: Converting between 'smart' objects, which have the same size and backing
+    //     unsafe {
+    //         &*(&obj_refs[&ptr] as *const JObject as *const U)
+    //     }
+    // }
 
-        if !obj_refs.contains_key(&ptr) {
-            let obj = JObject::new(ptr).expect("Built local reference from invalid pointer");
-            obj_refs.insert(ptr, obj);
-        }
-
-        // SAFETY: Converting between 'smart' objects, which have the same size and backing
-        unsafe {
-            &*(&obj_refs[&ptr] as *const JObject as *const U)
-        }
-    }
-
-    fn drop_local_ref<T>(&self, ptr: *mut T) {
-        let ptr = ptr as *mut ffi::JObject;
-        let mut obj_refs = self.obj_refs.borrow_mut();
-        obj_refs.remove(&ptr);
-    }
+    // fn drop_local_ref<T>(&self, ptr: *mut T) {
+    //     let ptr = ptr as *mut ffi::JObject;
+    //     let mut obj_refs = self.obj_refs.borrow_mut();
+    //     obj_refs.remove(&ptr);
+    // }
 
     pub fn get_version(&self) -> JNIVersion {
         let env = self.internal_env();
         JNIVersion::from(env.get_version())
     }
 
-    pub fn define_class(&self, name: &str, loader: &JObject, buffer: &[i8]) -> Result<&JClass, Error> {
+    pub fn define_class(&self, name: &str, loader: &JObject, buffer: &[i8]) -> Result<JClass> {
         let env = self.internal_env();
         let name = cstr_from_str(name)?;
 
@@ -111,12 +204,12 @@ impl JNIEnv {
             if new_cls.is_null() {
                 Err(Error::new("Could not define new Java Class", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(new_cls))
+                Ok(JClass::new(new_cls)?)
             }
         }
     }
 
-    pub fn find_class(&self, name: &str) -> Result<&JClass, Error> {
+    pub fn find_class(&self, name: &str) -> Result<JClass> {
         let env = self.internal_env();
         let c_name = cstr_from_str(&mangle_class(name).mangled())?;
 
@@ -124,17 +217,17 @@ impl JNIEnv {
         if new_cls.is_null() {
             Err(Error::new(&format!("Could not find Java Class {}", name), ffi::constants::JNI_ERR))
         } else {
-            Ok(self.local_ref(new_cls))
+            Ok(JClass::new(new_cls)?)
         }
     }
 
-    pub fn from_reflected_method(&self, method: &JObject) -> Result<JMethodID, Error> {
+    pub fn from_reflected_method(&self, method: &JObject) -> Result<JMethodID> {
         let env = self.internal_env();
         let meth_cls = self.find_class("java.lang.reflect.Method").unwrap();
         let cls_cls = self.find_class("java.lang.Class").unwrap();
-        let get_ret = self.get_method_id(meth_cls, "getReturnType", "() -> java.lang.Class").unwrap();
-        let get_num_args = self.get_method_id(meth_cls, "getParameterCount", "() -> int").unwrap();
-        let get_name = self.get_method_id(cls_cls, "getName", "() -> java.lang.String").unwrap();
+        let get_ret = self.get_method_id(&meth_cls, "getReturnType", "() -> java.lang.Class").unwrap();
+        let get_num_args = self.get_method_id(&meth_cls, "getParameterCount", "() -> int").unwrap();
+        let get_name = self.get_method_id(&cls_cls, "getName", "() -> java.lang.String").unwrap();
 
         // SAFETY: Internal pointer use
         unsafe {
@@ -145,7 +238,7 @@ impl JNIEnv {
                 .into_obj()
                 .unwrap()
                 .unwrap();
-            let ret_name = self.call_method(ret_cls, &get_name, &vec![])
+            let ret_name = self.call_method(&ret_cls, &get_name, &vec![])
                 .unwrap()
                 .unwrap()
                 .into_obj()
@@ -157,7 +250,7 @@ impl JNIEnv {
                 .into_int()
                 .unwrap() as usize;
 
-            let chars = self.get_string_utf_chars(ret_name.upcast_raw());
+            let chars = self.get_string_utf_chars(&ret_name.upcast_raw());
             let chars = CString::new(chars).unwrap();
             let ret_type = JType::from_name(&chars.into_string().unwrap());
 
@@ -169,8 +262,9 @@ impl JNIEnv {
         }
     }
 
-    pub fn from_reflected_field(&self, method: &JObject) -> Result<JFieldID, Error> {
-        let env = self.internal_env();
+    pub fn from_reflected_field(&self, method: &JObject) -> Result<JFieldID> {
+        use std::sync::atomic;
+        static PTR: atomic::AtomicPtr<&JClass> = atomic::AtomicPtr::new(std::ptr::null_mut());
 
         // TODO
         unimplemented!();
@@ -186,7 +280,7 @@ impl JNIEnv {
     }
 
     /// TODO: Maybe make is_static part of IDs?
-    pub fn to_reflected_method(&self, cls: &JClass, id: &JMethodID, is_static: bool) -> Result<&JObject, Error> {
+    pub fn to_reflected_method(&self, cls: &JClass, id: &JMethodID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -195,12 +289,12 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Could not find reflected method", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JObject::new(obj)?)
             }
         }
     }
 
-    pub fn to_reflected_field(&self, cls: &JClass, id: &JFieldID, is_static: bool) -> Result<&JObject, Error> {
+    pub fn to_reflected_field(&self, cls: &JClass, id: &JFieldID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
         unsafe {
@@ -208,12 +302,12 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Could not find reflected field", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JObject::new(obj)?)
             }
         }
     }
 
-    pub fn get_superclass(&self, cls: &JClass) -> Result<&JClass, Error> {
+    pub fn get_superclass(&self, cls: &JClass) -> Result<JClass> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -222,7 +316,7 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Could not get object superclass", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JClass::new(obj)?)
             }
         }
     }
@@ -236,7 +330,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn throw(&self, exception: JThrowable) -> Result<(), Error> {
+    pub fn throw(&self, exception: JThrowable) -> Result<()> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -250,7 +344,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn throw_new(&self, cls: JClass, msg: &str) -> Result<(), Error> {
+    pub fn throw_new(&self, cls: JClass, msg: &str) -> Result<()> {
         let env = self.internal_env();
         let c_msg = cstr_from_str(msg)?;
 
@@ -270,49 +364,49 @@ impl JNIEnv {
         env.exception_check() != 0
     }
 
-    pub fn exception_occurred(&self) -> Result<Option<&JThrowable>, Error> {
+    pub fn exception_occurred(&self) -> Result<Option<JThrowable>> {
         let env = self.internal_env();
 
         let exc = env.exception_occurred();
         if exc.is_null() {
             Ok(None)
         } else {
-            let throwable = self.local_ref(exc);
+            let throwable = JThrowable::new(exc)?;
 
             Ok(Some(throwable))
         }
     }
 
-    pub fn exception_describe(&self) -> Result<(), ()> {
+    pub fn exception_describe(&self) -> Result<()> {
         let env = self.internal_env();
 
         if self.exception_check() {
             env.exception_describe();
             Ok(())
         } else {
-            Err(())
+            Err(Error::new("No active error to describe", ffi::constants::JNI_ERR))
         }
     }
 
-    pub fn exception_clear(&self) -> Result<(), ()> {
+    pub fn exception_clear(&self) -> Result<()> {
         let env = self.internal_env();
 
         if self.exception_check() {
             env.exception_clear();
             Ok(())
         } else {
-            Err(())
+            Err(Error::new("No active error to clear", ffi::constants::JNI_ERR))
         }
     }
 
-    pub fn fatal_error(&self, msg: &str) -> Result<!, Error> {
+    pub fn fatal_error(&self, msg: &str) -> Result<!> {
         let env = self.internal_env();
         let c_msg = cstr_from_str(msg)?;
 
         env.fatal_error(c_msg.as_ptr())
     }
 
-    pub fn ensure_local_capacity(&self, capacity: i32) -> Result<(), Error> {
+    pub fn ensure_local_capacity(&self, capacity: i32) -> Result<()> {
         let env = self.internal_env();
 
         let result = env.ensure_local_capacity(capacity);
@@ -323,7 +417,8 @@ impl JNIEnv {
         }
     }
 
-    pub fn push_local_frame(&self, capacity: i32) -> Result<(), Error> {
+    // TODO: Maybe make this return a new 'environment' so all refs don't outlive it?
+    pub fn push_local_frame(&self, capacity: i32) -> Result<()> {
         let env = self.internal_env();
 
         let result = env.push_local_frame(capacity);
@@ -334,7 +429,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn pop_local_frame<'a>(&self, obj: Option<&JObject>) -> Option<&JObject> {
+    pub fn pop_local_frame<'a>(&self, obj: Option<JObject<'a>>) -> Option<JObject<'a>> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -351,13 +446,13 @@ impl JNIEnv {
             if out.is_null() {
                 None
             } else {
-                // Some(JObject::new(out).expect("Null pointer in `pop_local_frame` despite null check"))
-                Some(self.local_ref(out))
+                Some(JObject::new(out).expect("Null pointer in `pop_local_frame` despite null check"))
+                // Some(self.local_ref(out))
             }
         }
     }
 
-    pub fn new_global_ref(&self, obj: &JObject) -> Result<JObject, Error> {
+    pub fn new_global_ref(&self, obj: &JObject) -> Result<JObject<'static>> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -371,7 +466,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn delete_global_ref(&self, obj: JObject) {
+    pub fn delete_global_ref(&self, obj: JObject<'static>) {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -380,7 +475,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn new_local_ref(&self, obj: &JObject) -> Result<&JObject, Error> {
+    pub fn new_local_ref(&self, obj: &JObject) -> Result<JObject> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -389,7 +484,7 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Couldn't create new local reference", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JObject::new(obj)?)
             }
         }
     }
@@ -397,13 +492,15 @@ impl JNIEnv {
     /// Deletes a local reference on the JVM. If you use this, you must ensure that all
     /// other references to the passed JObject are not used. Any use of them past here
     /// will cause undefined behavior.
-    pub unsafe fn delete_local_ref(&self, obj: &JObject) {
+    pub fn delete_local_ref(&self, obj: JObject) {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
-        let ptr = obj.borrow_ptr();
-        env.delete_local_ref(obj.borrow_ptr());
-        self.drop_local_ref(ptr);
+        unsafe {
+            let ptr = obj.borrow_ptr();
+            env.delete_local_ref(obj.borrow_ptr());
+            // self.drop_local_ref(ptr);
+        }
     }
 
     pub fn is_same_object(&self, obj1: &JObject, obj2: &JObject) -> bool {
@@ -415,7 +512,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn alloc_object(&self, cls: &JClass) -> Result<&JObject, Error> {
+    pub fn alloc_object(&self, cls: &JClass) -> Result<JObject> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -424,12 +521,12 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Couldn't allocate object", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JObject::new(obj)?)
             }
         }
     }
 
-    pub fn new_object(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<&JObject, Error> {
+    pub fn new_object(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<JObject> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -439,12 +536,12 @@ impl JNIEnv {
             if obj.is_null() {
                 Err(Error::new("Couldn't create new object", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(obj))
+                Ok(JObject::new(obj)?)
             }
         }
     }
 
-    pub fn get_object_class(&self, obj: &JObject) -> Result<&JClass, Error> {
+    pub fn get_object_class(&self, obj: &JObject) -> Result<JClass> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -453,7 +550,7 @@ impl JNIEnv {
             if cls.is_null() {
                 Err(Error::new("Couldn't get object class", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(cls))
+                Ok(JClass::new(cls)?)
             }
         }
     }
@@ -467,7 +564,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID, Error> {
+    pub fn get_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
 
@@ -495,7 +592,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn call_method(&self, obj: &JObject, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>, Error> {
+    pub fn call_method(&self, obj: &JObject, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
             return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
         }
@@ -517,7 +614,7 @@ impl JNIEnv {
                 if result.is_null() {
                     Ok(Some(JValue::Object(None)))
                 } else {
-                    Ok(Some(JValue::Object(Some(self.local_ref(result)))))
+                    Ok(Some(JValue::Object(Some(JObject::new(result)?))))
                 }
             }
             JType::Boolean => {
@@ -561,11 +658,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn call_method_nonvoid(&self, obj: &JObject, id: &JMethodID, args: &[JValue]) {
-
-    }
-
-    pub fn call_nonvirtual_method(&self, obj: &JObject, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>, Error> {
+    pub fn call_nonvirtual_method(&self, obj: &JObject, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
             return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
         }
@@ -589,7 +682,7 @@ impl JNIEnv {
                 if result.is_null() {
                     Ok(Some(JValue::Object(None)))
                 } else {
-                    Ok(Some(JValue::Object(Some(self.local_ref(result)))))
+                    Ok(Some(JValue::Object(Some(JObject::new(result)?))))
                 }
             }
             JType::Boolean => {
@@ -633,7 +726,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID, Error> {
+    pub fn get_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
 
@@ -653,7 +746,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_field(&self, obj: &JObject, id: &JFieldID) -> Result<JValue, Error> {
+    pub fn get_field(&self, obj: &JObject, id: &JFieldID) -> Result<JValue> {
         let env = self.internal_env();
 
         let raw_obj;
@@ -670,7 +763,7 @@ impl JNIEnv {
                 if result.is_null() {
                     Ok(JValue::Object(None))
                 } else {
-                    Ok(JValue::Object(Some(self.local_ref(result))))
+                    Ok(JValue::Object(Some(JObject::new(result)?)))
                 }
             }
             JNonVoidType::Boolean => {
@@ -708,7 +801,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn set_field(&self, obj: &JObject, id: &JFieldID, val: JValue) -> Result<(), Error> {
+    pub fn set_field(&self, obj: &JObject, id: &JFieldID, val: JValue) -> Result<()> {
         let env = self.internal_env();
 
         let raw_obj;
@@ -767,7 +860,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_static_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID, Error> {
+    pub fn get_static_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
 
@@ -795,7 +888,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn call_static_method(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>, Error> {
+    pub fn call_static_method(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
             return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
         }
@@ -811,13 +904,13 @@ impl JNIEnv {
             raw_id = id.borrow_ptr();
         }
 
-        match id.ret_ty() { // TODO: Add error check for non-object calls?
+        match id.ret_ty() { // TODO: Add error check for calls?
             JType::Object => {
                 let result = env.call_static_object_method(raw_cls, raw_id, args.as_ptr());
                 if result.is_null() {
                     Ok(Some(JValue::Object(None)))
                 } else {
-                    Ok(Some(JValue::Object(Some(self.local_ref(result)))))
+                    Ok(Some(JValue::Object(Some(JObject::new(result)?))))
                 }
             }
             JType::Boolean => {
@@ -861,7 +954,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_static_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID, Error> {
+    pub fn get_static_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
 
@@ -881,7 +974,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_static_field(&self, cls: &JClass, id: &JFieldID) -> Result<JValue, Error> {
+    pub fn get_static_field(&self, cls: &JClass, id: &JFieldID) -> Result<JValue> {
         let env = self.internal_env();
 
         let raw_cls;
@@ -898,7 +991,7 @@ impl JNIEnv {
                 if result.is_null() {
                     Ok(JValue::Object(None))
                 } else {
-                    Ok(JValue::Object(Some(self.local_ref(result))))
+                    Ok(JValue::Object(Some(JObject::new(result)?)))
                 }
             }
             JNonVoidType::Boolean => {
@@ -936,7 +1029,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn set_static_field(&self, cls: &JClass, id: &JFieldID, val: JValue) -> Result<(), Error> {
+    pub fn set_static_field(&self, cls: &JClass, id: &JFieldID, val: JValue) -> Result<()> {
         let env = self.internal_env();
 
         let raw_cls;
@@ -995,7 +1088,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn new_string(&self, chars: &[char]) -> Result<&JString, Error> {
+    pub fn new_string(&self, chars: &[char]) -> Result<JString> {
         let env = self.internal_env();
 
         let chars: Vec<u16> = chars.iter().map(|c| {*c as u16}).collect();
@@ -1004,7 +1097,7 @@ impl JNIEnv {
         if result.is_null() {
             Err(Error::new("Couldn't create new string", ffi::constants::JNI_ERR))
         } else {
-            Ok(self.local_ref(result))
+            Ok(JString::new(result)?)
         }
     }
 
@@ -1030,7 +1123,7 @@ impl JNIEnv {
             let out = Vec::from(raw_slice)
                 .into_iter()
                 .map(|c| {
-                    std::char::from_u32(c as u32).unwrap()
+                    std::char::from_u32(c as u32).expect("Java returned bad char")
                 })
                 .collect();
 
@@ -1040,7 +1133,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn new_string_utf(&self, str: &str) -> Result<&JString, Error> {
+    pub fn new_string_utf(&self, str: &str) -> Result<JString> {
         let env = self.internal_env();
         let c_str = cstr_from_str(str)?;
 
@@ -1048,7 +1141,7 @@ impl JNIEnv {
         if new_str.is_null() {
             Err(Error::new("Couldn't create string from UTF", ffi::constants::JNI_ERR))
         } else {
-            Ok(self.local_ref(new_str))
+            Ok(JString::new(new_str)?)
         }
     }
 
@@ -1091,7 +1184,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn new_object_array(&self, len: usize, cls: &JClass, init: Option<&JObject>) -> Result<&JObjectArray, Error> {
+    pub fn new_object_array(&self, len: usize, cls: &JClass, init: Option<&JObject>) -> Result<JObjectArray> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1108,12 +1201,12 @@ impl JNIEnv {
             if result.is_null() {
                 Err(Error::new("Couldn't create new object array", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(result))
+                Ok(JObjectArray::new(result)?)
             }
         }
     }
 
-    pub fn get_object_array_element(&self, array: &JObjectArray, idx: usize) -> Result<&JObject, Error> {
+    pub fn get_object_array_element(&self, array: &JObjectArray, idx: usize) -> Result<JObject> {
         let env = self.internal_env();
 
         if idx >= self.get_array_length(array.downcast()) {
@@ -1126,12 +1219,12 @@ impl JNIEnv {
             if result.is_null() {
                 Err(Error::new("Failed to get array element", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(result))
+                Ok(JObject::new(result)?)
             }
         }
     }
 
-    pub fn set_object_array_element(&self, array: &JObjectArray, idx: usize, val: &JObject) -> Result<(), Error> {
+    pub fn set_object_array_element(&self, array: &JObjectArray, idx: usize, val: &JObject) -> Result<()> {
         let env = self.internal_env();
 
         if idx >= self.get_array_length(array.downcast()) {
@@ -1145,28 +1238,327 @@ impl JNIEnv {
         }
     }
 
-    // TODO: Figure out native array handling
-    pub fn new_native_array(&self) {
-        unimplemented!()
+    pub fn new_native_array(&self, len: usize, ty: JNativeType) -> Result<JNativeArray> {
+        let len = len as i32;
+        let env = self.internal_env();
+
+        let result;
+        match ty {
+            JNativeType::Boolean => {
+                result = env.new_boolean_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Byte => {
+                result = env.new_byte_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Char => {
+                result = env.new_char_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Short => {
+                result = env.new_short_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Int => {
+                result = env.new_int_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Long => {
+                result = env.new_long_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Float => {
+                result = env.new_float_array(len) as *mut ffi::JArray;
+            }
+            JNativeType::Double => {
+                result = env.new_double_array(len) as *mut ffi::JArray;
+            }
+        }
+
+        if result.is_null() {
+            Err(Error::new("Couldn't create new native array", ffi::constants::JNI_ERR))
+        } else {
+            // SAFETY: Types must match do to above match statement
+            unsafe {
+                Ok(JNativeArray::new_raw(result, ty)?)
+            }
+        }
     }
 
-    pub fn get_native_array_elements(&self) {
-        unimplemented!()
+    pub fn get_native_array_elements<'a>(&self, arr: &'a JNativeArray ) -> Result<JNativeSlice<'a>> {
+        let env = self.internal_env();
+        let jarr = arr.as_jarray();
+
+        // SAFETY: Internal pointer use
+        unsafe {
+            let mut is_copy = 0;
+            let len = self.get_array_length(jarr);
+            let ptr: *mut std::ffi::c_void;
+
+            match arr {
+                JNativeArray::Boolean(arr) => {
+                    ptr = env.get_boolean_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Byte(arr) => {
+                    ptr = env.get_byte_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Char(arr) => {
+                    ptr = env.get_char_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Short(arr) => {
+                    ptr = env.get_short_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Int(arr) => {
+                    ptr = env.get_int_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Long(arr) => {
+                    ptr = env.get_long_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Float(arr) => {
+                    ptr = env.get_float_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+                JNativeArray::Double(arr) => {
+                    ptr = env.get_double_array_elements(arr.borrow_ptr(), &mut is_copy) as _;
+                }
+            }
+
+            if ptr.is_null() {
+                Err(Error::new("Couldn't get array elements", ffi::constants::JNI_ERR))
+            } else {
+                match arr {
+                    JNativeArray::Boolean(_) => {
+                        Ok(JNativeSlice::Boolean(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Byte(_) => {
+                        Ok(JNativeSlice::Byte(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Char(_) => {
+                        Ok(JNativeSlice::Char(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Short(_) => {
+                        Ok(JNativeSlice::Short(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Int(_) => {
+                        Ok(JNativeSlice::Int(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Long(_) => {
+                        Ok(JNativeSlice::Long(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Float(_) => {
+                        Ok(JNativeSlice::Float(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Double(_) => {
+                        Ok(JNativeSlice::Double(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                }
+            }
+        }
     }
 
-    pub fn release_native_array_elements(&self) {
-        unimplemented!()
+    // TODO: Check arr and slice are the same
+    pub fn release_native_array_elements(&self, arr: &JNativeArray, slice: &JNativeSlice, mode: ReleaseMode) {
+        let env = self.internal_env();
+        let ptr: *mut std::ffi::c_void;
+        let mode = mode.into();
+
+        match slice {
+            JNativeSlice::Boolean(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Byte(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Char(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Short(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Int(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Long(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Float(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Double(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+        }
+
+        // SAFETY: Internal pointer use
+        unsafe {
+            match arr {
+                JNativeArray::Boolean(arr) => {
+                    env.release_boolean_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Byte(arr) => {
+                    env.release_byte_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Char(arr) => {
+                    env.release_char_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Short(arr) => {
+                    env.release_short_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Int(arr) => {
+                    env.release_int_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Long(arr) => {
+                    env.release_long_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Float(arr) => {
+                    env.release_float_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+                JNativeArray::Double(arr) => {
+                    env.release_double_array_elements(arr.borrow_ptr(), ptr as _, mode)
+                }
+            }
+        }
     }
 
-    pub fn get_native_array_region(&self) {
-        unimplemented!()
+    pub fn get_native_array_region(&self, arr: &JNativeArray, start: usize, len: usize) -> Result<JNativeVec> {
+        let env = self.internal_env();
+
+        unsafe {
+            match arr {
+                JNativeArray::Boolean(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_boolean_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Boolean(out.into_iter().map(|b| {b != 0}).collect()))
+                }
+                JNativeArray::Byte(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_byte_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Byte(out))
+                }
+                JNativeArray::Char(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_char_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Char(out.into_iter().map(|c| {std::char::from_u32(c as u32).expect("Java returned bad char")}).collect()))
+                }
+                JNativeArray::Short(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_short_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Short(out))
+                }
+                JNativeArray::Int(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_int_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Int(out))
+                }
+                JNativeArray::Long(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_long_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Long(out))
+                }
+                JNativeArray::Float(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_float_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Float(out))
+                }
+                JNativeArray::Double(arr) => {
+                    let mut out = Vec::with_capacity(len);
+                    env.get_double_array_region(arr.borrow_ptr(), start as i32, len as i32, out.as_mut_ptr());
+                    Ok(JNativeVec::Double(out))
+                }
+            }
+        }
     }
 
-    pub fn set_native_array_region(&self) {
-        unimplemented!()
+    // TODO: Check arr and vec match
+    pub fn set_native_array_region(&self, arr: &JNativeArray, start: usize, len: usize, slice: &JNativeVec) -> Result<()> {
+        let env = self.internal_env();
+        let start = start as i32;
+        let len = len as i32;
+
+        // SAFETY: Internal pointer use
+        unsafe {
+            match arr {
+                JNativeArray::Boolean(arr) => {
+                    let temp: Vec<_>;
+                    if let JNativeVec::Boolean(vec) = slice {
+                        temp = vec.iter().map(|b| {*b as u8}).collect()
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_boolean_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Byte(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Byte(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_byte_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Char(arr) => {
+                    let temp: Vec<_>;
+                    if let JNativeVec::Char(vec) = slice {
+                        temp = vec.iter().map(|c| {*c as u16}).collect()
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_char_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Short(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Short(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_short_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Int(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Int(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_int_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Long(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Long(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_long_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Float(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Float(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_float_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+                JNativeArray::Double(arr) => {
+                    let temp: &Vec<_>;
+                    if let JNativeVec::Double(vec) = slice {
+                        temp = vec;
+                    } else {
+                        unreachable!()
+                    }
+
+                    env.set_double_array_region(arr.borrow_ptr(), start, len, temp.as_ptr());
+                }
+            }
+
+            Ok(())
+        }
     }
 
-    pub fn register_natives(&self, cls: &JClass, methods: &[JNINativeMethod]) -> Result<(), Error> {
+    pub fn register_natives(&self, cls: &JClass, methods: &[JNINativeMethod]) -> Result<()> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1181,7 +1573,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn unregister_natives(&self, cls: &JClass) -> Result<(), Error> {
+    pub fn unregister_natives(&self, cls: &JClass) -> Result<()> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1195,7 +1587,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn monitor_enter(&self, obj: &JObject) -> Result<(), Error> {
+    pub fn monitor_enter(&self, obj: &JObject) -> Result<()> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1209,7 +1601,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn monitor_exit(&self, obj: &JObject) -> Result<(), Error> {
+    pub fn monitor_exit(&self, obj: &JObject) -> Result<()> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1223,7 +1615,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_jvm(&self) -> Result<JavaVM, Error> {
+    pub fn get_jvm(&self) -> Result<JavaVM> {
         let env = self.internal_env();
         let mut vm = std::ptr::null_mut();
         env.get_java_vm(&mut vm);
@@ -1231,15 +1623,116 @@ impl JNIEnv {
         JavaVM::new(self.version, vm)
     }
 
-    pub fn get_string_region(&self) {}
+    pub fn get_string_region(&self, str: JString, start: usize, len: usize) -> Result<Vec<char>> {
+        let env = self.internal_env();
+        let mut buffer = Vec::with_capacity(len);
 
-    pub fn get_string_utf_region(&self) {}
+        // SAFETY: Internal pointer use
+        unsafe {
+            env.get_string_region(str.borrow_ptr(), start as i32, len as i32, buffer.as_mut_ptr());
+        }
 
-    pub fn get_primitive_array_critical(&self) {}
+        Ok(buffer.into_iter().map(|c| {std::char::from_u32(c as u32).expect("Java returned bad char")}).collect())
+    }
 
-    pub fn release_primitive_array_critical(&self) {}
+    pub fn get_string_utf_region(&self, str: JString, start: usize, len: usize) -> Result<Vec<u8>> {
+        let env = self.internal_env();
+        let mut buffer = Vec::with_capacity(len);
 
-    pub fn new_weak_global_ref(&self, obj: &JObject) -> Result<JWeak, Error> {
+        // SAFETY: Internal pointer use
+        unsafe {
+            env.get_string_utf_region(str.borrow_ptr(), start as i32, len as i32, buffer.as_mut_ptr());
+        }
+
+        Ok(buffer.into_iter().map(|c| {c as u8}).collect())
+    }
+
+    pub fn get_primitive_array_critical<'a>(&self, arr: &'a JNativeArray) -> Result<JNativeSlice<'a>> {
+        let env = self.internal_env();
+        let jarr = arr.as_jarray();
+
+        // SAFETY: Internal pointer use
+        unsafe {
+            let mut is_copy = 0;
+            let len = self.get_array_length(jarr);
+            let ptr: *mut std::ffi::c_void;
+
+            ptr = env.get_primitive_array_critical(jarr.borrow_ptr() as _, &mut is_copy) as _;
+
+            if ptr.is_null() {
+                Err(Error::new("Couldn't get array elements", ffi::constants::JNI_ERR))
+            } else {
+                match arr {
+                    JNativeArray::Boolean(_) => {
+                        Ok(JNativeSlice::Boolean(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Byte(_) => {
+                        Ok(JNativeSlice::Byte(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Char(_) => {
+                        Ok(JNativeSlice::Char(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Short(_) => {
+                        Ok(JNativeSlice::Short(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Int(_) => {
+                        Ok(JNativeSlice::Int(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Long(_) => {
+                        Ok(JNativeSlice::Long(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Float(_) => {
+                        Ok(JNativeSlice::Float(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                    JNativeArray::Double(_) => {
+                        Ok(JNativeSlice::Double(slice::from_raw_parts_mut(ptr as _, len)))
+                    }
+                }
+            }
+        }
+    }
+
+    // TODO: Check arr and slice are the same
+    pub fn release_primitive_array_critical(&self, arr: &JNativeArray, slice: &JNativeSlice, mode: ReleaseMode) {
+        let env = self.internal_env();
+        let ptr: *mut std::ffi::c_void;
+        let mode = mode.into();
+        let jarr = arr.as_jarray();
+
+        match slice {
+            JNativeSlice::Boolean(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Byte(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Char(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Short(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Int(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Long(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Float(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+            JNativeSlice::Double(slice) => {
+                ptr = slice.as_ptr() as _
+            }
+        }
+
+        // SAFETY: Internal pointer use
+        unsafe {
+            env.release_primitive_array_critical(jarr.borrow_ptr(), ptr as _, mode)
+        }
+    }
+
+    pub fn new_weak_global_ref(&self, obj: &JObject) -> Result<JWeak<'static>> {
         let env = self.internal_env();
 
         unsafe {
@@ -1252,7 +1745,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn delete_weak_global_ref(&self, weak: JWeak) {
+    pub fn delete_weak_global_ref(&self, weak: JWeak<'static>) {
         let env = self.internal_env();
 
         unsafe {
@@ -1260,22 +1753,22 @@ impl JNIEnv {
         }
     }
 
-    pub fn new_direct_byte_buffer<'a>(&self, buff: &'a [u8]) -> Result<JByteBuffer<'a>, Error> {
+    pub fn new_direct_byte_buffer<'a>(&self, buff: &'a mut [u8]) -> Result<JObject<'a>> {
         let env = self.internal_env();
 
         let obj = env.new_direct_byte_buffer(
-            buff.as_ptr() as *mut std::ffi::c_void,
+            buff.as_mut_ptr() as *mut std::ffi::c_void,
             buff.len() as i64
         );
 
         if obj.is_null() {
             Err(Error::new("Couldn't create direct byte buffer", ffi::constants::JNI_ERR))
         } else {
-            Ok(JByteBuffer::new(obj)?)
+            Ok(JObject::new(obj)?)
         }
     }
 
-    pub fn get_direct_buffer_slice<'a>(&self, buff: &JByteBuffer<'a>) -> Result<&'a [u8], Error> {
+    pub fn get_direct_buffer_slice<'a>(&self, buff: &JObject<'a>) -> Result<&'a mut [u8]> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1286,7 +1779,7 @@ impl JNIEnv {
             if pos.is_null() {
                 Err(Error::new("Couldn't get buffer from object", ffi::constants::JNI_ERR))
             } else {
-                Ok(slice::from_raw_parts(pos as *const u8, len as usize))
+                Ok(slice::from_raw_parts_mut(pos as *mut u8, len as usize))
             }
         }
     }
@@ -1301,7 +1794,7 @@ impl JNIEnv {
         }
     }
 
-    pub fn get_module(&self, cls: &JClass) -> Result<&JObject, Error> {
+    pub fn get_module(&self, cls: &JClass) -> Result<JObject> {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
@@ -1310,7 +1803,7 @@ impl JNIEnv {
             if result.is_null() {
                 Err(Error::new("Couldn't get module for class", ffi::constants::JNI_ERR))
             } else {
-                Ok(self.local_ref(result))
+                Ok(JObject::new(result)?)
             }
         }
     }

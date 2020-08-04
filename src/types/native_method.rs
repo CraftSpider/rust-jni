@@ -1,18 +1,6 @@
-use crate::ffi;
+use crate::{ffi, JavaType};
 use std::intrinsics::transmute;
 use std::ffi::c_void;
-
-pub trait JavaType {}
-
-impl JavaType for ffi::JBoolean {}
-impl JavaType for ffi::JByte {}
-impl JavaType for ffi::JChar {}
-impl JavaType for ffi::JShort {}
-impl JavaType for ffi::JInt {}
-impl JavaType for ffi::JLong {}
-impl JavaType for ffi::JFloat {}
-impl JavaType for ffi::JDouble {}
-impl JavaType for *mut ffi::JObject {}
 
 pub struct JNINativeMethod {
     name: String,

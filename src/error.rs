@@ -30,7 +30,7 @@ impl Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Error in JVM: message \"{}\", code {}", self.error, self.code)
     }
 }
@@ -44,3 +44,5 @@ impl error::Error for Error {
         }
     }
 }
+
+pub type Result<T> = std::result::Result<T, Error>;

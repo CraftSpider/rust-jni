@@ -19,4 +19,4 @@ pub const JNI_EEXIST: i32 = -5;
 pub const JNI_EINVAL: i32 = -6;
 
 pub const JNI_COMMIT: i32 = 1;
-pub const JNI_ABBORT: i32 = 2;
+pub const JNI_ABORT: i32 = 2;

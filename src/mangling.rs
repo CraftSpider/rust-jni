@@ -166,6 +166,15 @@ fn primitive_symbol(name: &str) -> &str {
 }
 
 
+fn handle_args(args: &str) -> Vec<TypeSignature> {
+    if args.len() > 2 {
+        (&args[1..(args.len() - 1)]).split(",").map(&mangle_class).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+
 pub fn mangle_class(name: &str) -> TypeSignature {
     let name = name.trim();
 
@@ -176,8 +185,8 @@ pub fn mangle_class(name: &str) -> TypeSignature {
             let (args, ret) = name.split_at(pos);
             let args = args.trim();
             let ret = ret.trim();
+            let args = handle_args(args);
 
-            let args = (&args[1..(args.len() - 1)]).split(",").map(&mangle_class).collect();
             let ret = mangle_class(&ret[2..]);
 
             TypeSignature::Method(args, Box::new(ret))
@@ -206,7 +215,8 @@ mod tests {
         assert_eq!(mangle_class("java.lang.Object").mangled(), "java/lang/Object");
         assert_eq!(mangle_class("java.lang.String[]").mangled(), "[Ljava/lang/String;");
         assert_eq!(mangle_class("(java.lang.Object, int) -> java.lang.String").mangled(), "(Ljava/lang/Object;I)Ljava/lang/String;");
-        assert_eq!(mangle_class("(int, long[], java.lang.ArrayList) -> void").mangled(), "(I[JLjava/lang/ArrayList;)V")
+        assert_eq!(mangle_class("(int, long[], java.lang.ArrayList) -> void").mangled(), "(I[JLjava/lang/ArrayList;)V");
+        assert_eq!(mangle_class("() -> int").mangled(), "()I");
     }
 
 }

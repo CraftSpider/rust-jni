@@ -9,17 +9,19 @@ use std::marker::PhantomData;
 macro_rules! smart_obj {
     ($x:ident) => {
         #[derive(Debug)]
-        pub struct $x {
-            backing_ptr: *mut ffi::$x
+        pub struct $x<'a> {
+            backing_ptr: *mut ffi::$x,
+            phantom: PhantomData<&'a ffi::$x>
         }
 
-        impl $x {
-            pub fn new(ptr: *mut ffi::$x) -> Result<$x, Error> {
+        impl $x<'_> {
+            pub fn new<'a>(ptr: *mut ffi::$x) -> Result<$x<'a>, Error> {
                 if ptr.is_null() {
                     Err(Error::new(&format!("{} must be constructed from non-null pointer", stringify!($x)), ffi::constants::JNI_ERR))
                 } else {
                     Ok($x {
-                        backing_ptr: ptr
+                        backing_ptr: ptr,
+                        phantom: PhantomData
                     })
                 }
             }
@@ -34,14 +36,14 @@ macro_rules! smart_obj {
 
 macro_rules! downcast {
     ($x:ident, $y:ident) => {
-        impl JavaDownCast<$y> for $x {
-            fn downcast(self) -> $y {
+        impl<'a> JavaDownCast<$y<'a>> for $x<'a> {
+            fn downcast(self) -> $y<'a> {
                 $y::new(self.backing_ptr as *mut ffi::$y).unwrap()
             }
         }
 
-        impl<'a> JavaDownCast<&'a $y> for &'a $x {
-            fn downcast(self) -> &'a $y {
+        impl<'a, 'b> JavaDownCast<&'b $y<'a>> for &'b $x<'a> {
+            fn downcast(self) -> &'b $y<'a> {
                 // SAFETY: All the smart types have the same size + same backing pointer
                 //         This is thus a safe cast
                 unsafe {
@@ -55,26 +57,26 @@ macro_rules! downcast {
 
 macro_rules! upcast {
     ($x:ident, $y:ident) => {
-        impl JavaUpCast<$y> for $x {
-            fn upcast(self, env: &JNIEnv) -> $y {
+        impl<'a> JavaUpCast<$y<'a>> for $x<'a> {
+            fn upcast(self, env: &JNIEnv) -> $y<'a> {
                 // TODO: Do env check
                 $y::new(self.backing_ptr as *mut ffi::$y).unwrap()
             }
 
-            unsafe fn upcast_raw(self) -> $y {
+            unsafe fn upcast_raw(self) -> $y<'a> {
                 $y::new(self.backing_ptr as *mut ffi::$y).unwrap()
             }
         }
 
-        impl<'a> JavaUpCast<&'a $y> for &'a $x {
-            fn upcast(self, env: &JNIEnv) -> &'a $y {
+        impl<'a, 'b> JavaUpCast<&'b $y<'a>> for &'b $x<'a> {
+            fn upcast(self, env: &JNIEnv) -> &'b $y<'a> {
                 // TODO: Do env check
                 unsafe {
                     &*(self as *const $x as *const $y)
                 }
             }
 
-            unsafe fn upcast_raw(self) -> &'a $y {
+            unsafe fn upcast_raw(self) -> &'b $y<'a> {
                 &*(self as *const $x as *const $y)
             }
         }

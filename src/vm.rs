@@ -184,14 +184,22 @@ mod tests {
 
         println!("{:?}", result);
 
-        std::mem::drop(vm);
+        use crate::{get_cls, get_method_id, get_static_method_id, get_field_id, get_static_field_id};
+
+        let cls = get_cls!(env, "java.lang.String");
+        let id = get_method_id!(env, cls, "length", "() -> int");
+        let id = get_static_method_id!(env, cls, "blah", "() -> void");
+        let id = get_field_id!(env, cls, "field", "java.lang.String");
+        let id = get_static_field_id!(env, cls, "field", "java.lang.String");
 
         let obj_buff;
         {
-            let buff = [0x1, 0x2, 0x3];
-            obj_buff = env.new_direct_byte_buffer(&buff).unwrap();
+            let mut buff = [0x1, 0x2, 0x3];
+            obj_buff = env.new_direct_byte_buffer(&mut buff).unwrap();
             env.get_direct_buffer_slice(&obj_buff);
         }
+
+        std::mem::drop(vm);
 
         // let _env2 = vm.get_local_env().unwrap();
         // let _vm = JavaVM::create(JNIVersion::Ver18).unwrap();

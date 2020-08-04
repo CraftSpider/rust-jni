@@ -53,7 +53,7 @@ pub mod env;
 pub mod types;
 pub mod mangling;
 
-pub use error::Error;
+pub use error::{Error, Result};
 
 pub use types::*;
 pub use vm::JavaVM;
