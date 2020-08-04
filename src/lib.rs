@@ -52,6 +52,7 @@ pub mod vm;
 pub mod env;
 pub mod types;
 pub mod mangling;
+pub mod macros;
 
 pub use error::{Error, Result};
 

@@ -14,101 +14,6 @@ use crate::types::object::JWeak;
 use crate::object::JByteBuffer;
 
 
-#[macro_export]
-macro_rules! get_cls {
-    ($env:ident, $cls:literal) => {
-        {
-            use $crate::types::*;
-
-            static mut CLS: Option<JClass<'static>> = None;
-            unsafe {
-                if let None = CLS {
-                    let cls = $env.new_global_ref(&$env.find_class($cls).expect(&format!("Couldn't find class {}", $cls)).downcast()).unwrap().upcast_raw();
-                    CLS = Some(cls);
-                }
-                CLS.as_ref().unwrap()
-            }
-        }
-    }
-}
-
-
-#[macro_export]
-macro_rules! get_method_id {
-    ($env:ident, $cls:ident, $name:literal, $sig:literal) => {
-        {
-            use $crate::types::*;
-
-            static mut ID: Option<JMethodID> = None;
-            unsafe {
-                if let None = ID {
-                    let id = $env.get_method_id($cls, $name, $sig).expect(&format!("Couldn't find method {} with signature {}", $name, $sig));
-                    ID = Some(id)
-                }
-                ID.as_ref().unwrap()
-            }
-        }
-    }
-}
-
-
-#[macro_export]
-macro_rules! get_static_method_id {
-    ($env:ident, $cls:ident, $name:literal, $sig:literal) => {
-        {
-            use $crate::types::*;
-
-            static mut ID: Option<JMethodID> = None;
-            unsafe {
-                if let None = ID {
-                    let id = $env.get_static_method_id($cls, $name, $sig).expect(&format!("Couldn't find method {} with signature {}", $name, $sig));
-                    ID = Some(id)
-                }
-                ID.as_ref().unwrap()
-            }
-        }
-    }
-}
-
-
-#[macro_export]
-macro_rules! get_field_id {
-    ($env:ident, $cls:ident, $name:literal, $ty:literal) => {
-        {
-            use $crate::types::*;
-
-            static mut ID: Option<JFieldID> = None;
-            unsafe {
-                if let None = ID {
-                    let id = $env.get_field_id($cls, $name, $ty).expect(&format!("Couldn't find method {} with signature {}", $name, $ty));
-                    ID = Some(id)
-                }
-                ID.as_ref().unwrap()
-            }
-        }
-    }
-}
-
-
-#[macro_export]
-macro_rules! get_static_field_id {
-    ($env:ident, $cls:ident, $name:literal, $ty:literal) => {
-        {
-            use $crate::types::*;
-
-            static mut ID: Option<JFieldID> = None;
-            unsafe {
-                if let None = ID {
-                    let id = $env.get_static_field_id($cls, $name, $ty).expect(&format!("Couldn't find method {} with signature {}", $name, $ty));
-                    ID = Some(id)
-                }
-                ID.as_ref().unwrap()
-            }
-        }
-    }
-}
-
-
 /// Handy utility for converting a `&str` into a `CString`, returning a rust_jni error on failure
 fn cstr_from_str(str: &str) -> Result<CString> {
     CString::new(str)
@@ -165,30 +70,6 @@ impl JNIEnv {
         }
     }
 
-    /// Non-public, because it would be incredibly unsafe. Stores a pointer as a key and a JObject
-    /// constructed from that pointer as a value, returning a reference to that JObject cast
-    /// as any other smart-object.
-    // fn local_ref<T, U>(&self, ptr: *mut T) -> &U {
-    //     let ptr = ptr as *mut ffi::JObject;
-    //     let mut obj_refs = self.obj_refs.borrow_mut();
-    //
-    //     if !obj_refs.contains_key(&ptr) {
-    //         let obj = JObject::new(ptr).expect("Built local reference from invalid pointer");
-    //         obj_refs.insert(ptr, obj);
-    //     }
-    //
-    //     // SAFETY: Converting between 'smart' objects, which have the same size and backing
-    //     unsafe {
-    //         &*(&obj_refs[&ptr] as *const JObject as *const U)
-    //     }
-    // }
-
-    // fn drop_local_ref<T>(&self, ptr: *mut T) {
-    //     let ptr = ptr as *mut ffi::JObject;
-    //     let mut obj_refs = self.obj_refs.borrow_mut();
-    //     obj_refs.remove(&ptr);
-    // }
-
     pub fn get_version(&self) -> JNIVersion {
         let env = self.internal_env();
         JNIVersion::from(env.get_version())
@@ -232,27 +113,21 @@ impl JNIEnv {
         // SAFETY: Internal pointer use
         unsafe {
             let id = env.from_reflected_method(method.borrow_ptr());
-            let ret_cls = self.call_method(method, &get_ret, &vec![])
-                .unwrap()
-                .unwrap()
-                .into_obj()
-                .unwrap()
-                .unwrap();
-            let ret_name = self.call_method(&ret_cls, &get_name, &vec![])
-                .unwrap()
-                .unwrap()
-                .into_obj()
-                .unwrap()
-                .unwrap();
-            let num_args = self.call_method(method, &get_num_args, &vec![])
-                .unwrap()
-                .unwrap()
-                .into_int()
-                .unwrap() as usize;
+            let ret_cls = self.call_method(method, &get_ret, &vec![])?
+                .expect("Unexpected void result")
+                .into_obj()?
+                .expect("Unexpected null result");
+            let ret_name = self.call_method(&ret_cls, &get_name, &vec![])?
+                .expect("Unexpected void result")
+                .into_obj()?
+                .expect("Unexpected null result");
+            let num_args = self.call_method(method, &get_num_args, &vec![])?
+                .expect("Unexpected void result")
+                .into_int()? as usize;
 
-            let chars = self.get_string_utf_chars(&ret_name.upcast_raw());
-            let chars = CString::new(chars).unwrap();
-            let ret_type = JType::from_name(&chars.into_string().unwrap());
+            let chars = self.get_string_chars(&ret_name.upcast_raw());
+            let chars: String = chars.into_iter().collect();
+            let ret_type = JType::from_name(&chars);
 
             if id.is_null() {
                 Err(Error::new("Could not find method ID", ffi::constants::JNI_ERR))
@@ -262,21 +137,35 @@ impl JNIEnv {
         }
     }
 
-    pub fn from_reflected_field(&self, method: &JObject) -> Result<JFieldID> {
-        use std::sync::atomic;
-        static PTR: atomic::AtomicPtr<&JClass> = atomic::AtomicPtr::new(std::ptr::null_mut());
+    pub fn from_reflected_field(&self, field: &JObject) -> Result<JFieldID> {
+        let env = self.internal_env();
+        let field_cls = self.find_class("java.lang.reflect.Field").unwrap();
+        let cls_cls = self.find_class("java.lang.Class").unwrap();
+        let get_ty = self.get_method_id(&field_cls, "getType", "() -> java.lang.Class").unwrap();
+        let get_name = self.get_method_id(&cls_cls, "getName", "() -> java.lang.String").unwrap();
 
-        // TODO
-        unimplemented!();
         // SAFETY: Internal pointer use
-        // unsafe {
-        //     let id = env.from_reflected_field(method.borrow_ptr());
-        //     if id.is_null() {
-        //         Err(Error::new("Could not find field ID", ffi::constants::JNI_ERR))
-        //     } else {
-        //         Ok(JFieldID::new(id)?)
-        //     }
-        // }
+        unsafe {
+            let id = env.from_reflected_field(field.borrow_ptr());
+            let ty_cls = self.call_method(field, &get_ty, &vec![])?
+                .expect("Unexpected void result")
+                .into_obj()?
+                .expect("Unexpected null result");
+            let ty_name = self.call_method(&ty_cls, &get_name, &vec![])?
+                .expect("Unexpected void result")
+                .into_obj()?
+                .expect("Unexpected null result");
+
+            let chars = self.get_string_chars(&ty_name.upcast_raw());
+            let chars: String = chars.into_iter().collect();
+            let ty = JType::from_name(&chars).as_nonvoid().unwrap();
+
+            if id.is_null() {
+                Err(Error::new("Could not find field ID", ffi::constants::JNI_ERR))
+            } else {
+                Ok(JFieldID::new(id, ty)?)
+            }
+        }
     }
 
     /// TODO: Maybe make is_static part of IDs?
