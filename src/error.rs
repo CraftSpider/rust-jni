@@ -1,7 +1,8 @@
 use std::fmt::{Display, Formatter};
 use std::error;
 
-/// For when JNI method return error codes
+/// Error type for this library. Most often used to represent a case where an environment
+/// action caused Java to begin throwing an error
 #[derive(Debug)]
 pub struct Error {
     from: Option<Box<dyn error::Error>>,
@@ -10,6 +11,8 @@ pub struct Error {
 }
 
 impl Error {
+
+    /// Create a new error, with a messge and numeric code
     pub fn new(msg: &str, code: i32) -> Error {
         Error {
             from: None,
@@ -18,6 +21,7 @@ impl Error {
         }
     }
 
+    /// Create a new error, based on an existing [error::Error]
     pub fn from(err: Box<dyn error::Error>) -> Error {
         let desc = err.to_string();
 
@@ -45,4 +49,5 @@ impl error::Error for Error {
     }
 }
 
+/// Common result type using the local error type
 pub type Result<T> = std::result::Result<T, Error>;

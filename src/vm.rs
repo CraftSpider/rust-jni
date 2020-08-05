@@ -55,7 +55,8 @@ impl JavaVM {
         }
     }
 
-    /// Get a reference to the internal JVM pointer
+    /// Non-public way to get a reference to the internal JVM pointer. Not unsafe only because it's
+    /// not public.
     fn internal_vm(&self) -> &ffi::JavaVM {
         // SAFETY: The main_vm pointer is private, and only set to non-null values in checked locations
         unsafe {

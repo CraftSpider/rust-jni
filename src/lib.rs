@@ -1,11 +1,11 @@
 
 //!
-//! rust_jni is a library for writing of JNI compatible libraries, in rust. It uses higher-level
-//! abstractions along with a #[java] macro to allow the easy writing of safe, sound code.
-//! It trades off some efficiency and control in the name of greater soundness and better error
-//! handling.
+//! rust_jni is a library for the writing of JNI compatible libraries, in rust. It uses higher-level
+//! abstractions along with the [rust_jni_proc::java] macro to allow the easy writing of safe, sound
+//! code. It trades off some efficiency and control in the name of greater soundness and better
+//! error handling.
 //!
-//! # Example of a #[java] function
+//! # Example of a #[rust_jni_proc::java] function
 //!
 //! ```
 //! use rust_jni::*;
@@ -21,22 +21,19 @@
 //!
 //! # Soundness
 //!
-//! - #[java] functions must take non-native types by reference. (And native types by value)
-//!   Why? The pointers passed are local, and thus are guaranteed to live
-//!   for the length of that call, but not any longer. (Or until [delete_local_ref] is called,
-//!   which is why it's unsafe)
-//! - Returned objects are references, if local. They're stored in the env, deleted them if the ref
-//!   is deleted.
+//! - `#[java]` functions must take all types by value, with non-static lifetimes. Why? The pointers
+//!   passed are local, and thus are guaranteed to live for the length of that call, but not any
+//!   longer. (Or until [env::JNIEnv::delete_local_ref] is called, which is why it's unsafe)
 //! - Casts transmute safely because all backing pointers are the same, the JVM just calls them
 //!   different things for type safety (And the casts done are either checked or verified safe)
-//! - [borrow_ptr] is unsafe because external systems may break the pointer promises. All
-//!   places labeled with 'Internal pointer use' as their safety are places where we are
-//!   using the pointers in JNI-sound ways.
+//! - [types::JObject::borrow_ptr] is unsafe because external systems may break the pointer
+//!   promises. All places labeled with 'Internal pointer use' as their safety are places where we
+//!   are using the pointers in JNI-sound ways.
 //!
 //! Macro Rules:
 //! - Must take environment as first param
-//! - Must take non-native types by ref, native by ref
-//! - Must return native by value, non-native by ref
+//! - Must take all types by value
+//! - Must return by value
 //! - Must include `class = ""`, may either use actual name or `name = ""`
 
 #![allow(unused)]

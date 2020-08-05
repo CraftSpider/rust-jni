@@ -70,18 +70,21 @@ impl JNIEnv {
         }
     }
 
+    /// Get the version of the associated JVM
     pub fn get_version(&self) -> JNIVersion {
         let env = self.internal_env();
         JNIVersion::from(env.get_version())
     }
 
-    pub fn define_class(&self, name: &str, loader: &JObject, buffer: &[i8]) -> Result<JClass> {
+    /// Define a new JVM class. The class will have the given name and be owned by the given loader,
+    /// created from the passed byte buffer.
+    pub fn define_class(&self, name: &str, loader: &JObject, buffer: &[u8]) -> Result<JClass> {
         let env = self.internal_env();
         let name = cstr_from_str(name)?;
 
         // SAFETY: Internal pointer use
         unsafe {
-            let new_cls = env.define_class(name.as_ptr(), loader.borrow_ptr(), buffer.as_ptr(), buffer.len() as i32);
+            let new_cls = env.define_class(name.as_ptr(), loader.borrow_ptr(), buffer.as_ptr() as _, buffer.len() as i32);
             if new_cls.is_null() {
                 Err(Error::new("Could not define new Java Class", ffi::constants::JNI_ERR))
             } else {
@@ -90,6 +93,7 @@ impl JNIEnv {
         }
     }
 
+    /// Find an existing class by name. The passed name should consist only of ASCII characters
     pub fn find_class(&self, name: &str) -> Result<JClass> {
         let env = self.internal_env();
         let c_name = cstr_from_str(&mangle_class(name).mangled())?;
@@ -102,6 +106,7 @@ impl JNIEnv {
         }
     }
 
+    /// Convert a reflected method object into an associated method ID
     pub fn from_reflected_method(&self, method: &JObject) -> Result<JMethodID> {
         let env = self.internal_env();
         let meth_cls = self.find_class("java.lang.reflect.Method").unwrap();
@@ -137,6 +142,7 @@ impl JNIEnv {
         }
     }
 
+    /// Convert a reflected field object into an associated field ID
     pub fn from_reflected_field(&self, field: &JObject) -> Result<JFieldID> {
         let env = self.internal_env();
         let field_cls = self.find_class("java.lang.reflect.Field").unwrap();
@@ -169,6 +175,7 @@ impl JNIEnv {
     }
 
     /// TODO: Maybe make is_static part of IDs?
+    /// Build a reflected Method object from a class, method ID, and static-ness
     pub fn to_reflected_method(&self, cls: &JClass, id: &JMethodID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -183,6 +190,7 @@ impl JNIEnv {
         }
     }
 
+    /// Build a reflected Field object from a class, field ID, and static-ness
     pub fn to_reflected_field(&self, cls: &JClass, id: &JFieldID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -196,6 +204,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get the superclass of a given class. Will return an error if the class is Object or other
+    /// class with no superclass.
     pub fn get_superclass(&self, cls: &JClass) -> Result<JClass> {
         let env = self.internal_env();
 
@@ -210,6 +220,8 @@ impl JNIEnv {
         }
     }
 
+    /// Checks whether an object with the type of the first argument can be safely cast to an object
+    /// with the type of the second object
     pub fn is_assignable_from(&self, cls1: &JClass, cls2: &JClass) -> bool {
         let env = self.internal_env();
 
@@ -219,6 +231,8 @@ impl JNIEnv {
         }
     }
 
+    /// Start throwing an exception on the JVM. Result is Ok if exception *is* thrown, Err if no
+    /// exception is thrown.
     pub fn throw(&self, exception: JThrowable) -> Result<()> {
         let env = self.internal_env();
 
@@ -233,6 +247,8 @@ impl JNIEnv {
         }
     }
 
+    /// Start throwing a new instance of an exception on the JVM. Result is Ok if exception *is*
+    /// thrown, Err if no exception is thrown.
     pub fn throw_new(&self, cls: JClass, msg: &str) -> Result<()> {
         let env = self.internal_env();
         let c_msg = cstr_from_str(msg)?;
@@ -248,24 +264,25 @@ impl JNIEnv {
         }
     }
 
+    /// Check whether an exception is currently occuring on the JVM
     pub fn exception_check(&self) -> bool {
         let env = self.internal_env();
         env.exception_check() != 0
     }
 
-    pub fn exception_occurred(&self) -> Result<Option<JThrowable>> {
+    /// Get the current exception being thrown, or Err
+    pub fn exception_occurred(&self) -> Result<JThrowable> {
         let env = self.internal_env();
 
         let exc = env.exception_occurred();
         if exc.is_null() {
-            Ok(None)
+            Err(Error::new("No active exception to retrieve", ffi::constants::JNI_ERR))
         } else {
-            let throwable = JThrowable::new(exc)?;
-
-            Ok(Some(throwable))
+            Ok(JThrowable::new(exc)?)
         }
     }
 
+    /// Helper to print the current exception being thrown, or Err
     pub fn exception_describe(&self) -> Result<()> {
         let env = self.internal_env();
 
@@ -273,10 +290,11 @@ impl JNIEnv {
             env.exception_describe();
             Ok(())
         } else {
-            Err(Error::new("No active error to describe", ffi::constants::JNI_ERR))
+            Err(Error::new("No active exception to describe", ffi::constants::JNI_ERR))
         }
     }
 
+    /// If an exception is being thrown, clear it. Otherwise Err
     pub fn exception_clear(&self) -> Result<()> {
         let env = self.internal_env();
 
@@ -288,7 +306,8 @@ impl JNIEnv {
         }
     }
 
-    pub fn fatal_error(&self, msg: &str) -> Result<!> {
+    /// Raise a fatal error, and don't expect the JVM to continue.
+    pub fn fatal_error(&self, msg: &str) -> ! {
         let env = self.internal_env();
         let c_msg = cstr_from_str(msg)?;
 
@@ -386,9 +405,7 @@ impl JNIEnv {
 
         // SAFETY: Internal pointer use
         unsafe {
-            let ptr = obj.borrow_ptr();
             env.delete_local_ref(obj.borrow_ptr());
-            // self.drop_local_ref(ptr);
         }
     }
 
