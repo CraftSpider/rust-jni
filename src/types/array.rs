@@ -4,11 +4,9 @@ use crate::error::Result;
 use crate::types::{
     JBooleanArray, JByteArray, JCharArray, JShortArray, JIntArray, JLongArray, JFloatArray,
     JDoubleArray, JArray,
-    JBoolean, JByte, JChar, JShort, JInt, JLong, JFloat, JDouble,
-    JNonVoidType
+    JBoolean, JByte, JChar, JShort, JInt, JLong, JFloat, JDouble
 };
 use crate::JNativeType;
-use crate::types::JavaType;
 
 pub enum JNativeArray<'a> {
     Boolean(JBooleanArray<'a>),

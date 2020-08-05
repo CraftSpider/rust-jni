@@ -2,16 +2,13 @@
 use std::ffi::CString;
 use std::slice;
 
-use crate::{ffi, JByte, JNativeType, JNativeArray, JNativeSlice, ReleaseMode, JNativeVec};
+use crate::{ffi, JNativeType, JNativeArray, JNativeSlice, ReleaseMode, JNativeVec};
 use crate::types::{JNIVersion, JType, JValue, JObject, JClass, JMethodID, JFieldID, JThrowable, JString, JArray, JObjectArray, JavaDownCast, JNonVoidType, JNINativeMethod, JavaUpCast};
 use crate::error::{Error, Result};
 use crate::mangling::{mangle_class, TypeSignature};
 use crate::vm::JavaVM;
 use crate::types::jtype::JRefType;
-use std::collections::HashMap;
-use std::cell::RefCell;
 use crate::types::object::JWeak;
-use crate::object::JByteBuffer;
 
 
 /// Handy utility for converting a `&str` into a `CString`, returning a rust_jni error on failure
@@ -307,13 +304,15 @@ impl JNIEnv {
     }
 
     /// Raise a fatal error, and don't expect the JVM to continue.
-    pub fn fatal_error(&self, msg: &str) -> ! {
+    pub fn fatal_error(&self, msg: &str) -> Result<!> {
         let env = self.internal_env();
         let c_msg = cstr_from_str(msg)?;
 
         env.fatal_error(c_msg.as_ptr())
     }
 
+    /// Ensure that the JVM can create at least N many objects. Returns Err if it can't, as on
+    /// failure the JVM raises an exception
     pub fn ensure_local_capacity(&self, capacity: i32) -> Result<()> {
         let env = self.internal_env();
 
@@ -325,7 +324,9 @@ impl JNIEnv {
         }
     }
 
-    // TODO: Maybe make this return a new 'environment' so all refs don't outlive it?
+    /// TODO: Maybe make this return a new 'environment' so all refs don't outlive it?
+    /// Push a frame onto the JVM. All references created within this frame will be freed once it
+    /// is closed.
     pub fn push_local_frame(&self, capacity: i32) -> Result<()> {
         let env = self.internal_env();
 
@@ -337,6 +338,8 @@ impl JNIEnv {
         }
     }
 
+    /// Pop a frame from the JVM. All references created within it are freed, except one passed
+    /// as an argument, which is returned
     pub fn pop_local_frame<'a>(&self, obj: Option<JObject<'a>>) -> Option<JObject<'a>> {
         let env = self.internal_env();
 
@@ -360,6 +363,7 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new global reference, from an existing reference to an object
     pub fn new_global_ref(&self, obj: &JObject) -> Result<JObject<'static>> {
         let env = self.internal_env();
 
@@ -374,6 +378,7 @@ impl JNIEnv {
         }
     }
 
+    /// Delete an existing global reference.
     pub fn delete_global_ref(&self, obj: JObject<'static>) {
         let env = self.internal_env();
 
@@ -383,6 +388,8 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new local reference to an object. This can be used to increment refcount and
+    /// prevent garbage collection on a delete_local_ref call.
     pub fn new_local_ref(&self, obj: &JObject) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -397,8 +404,8 @@ impl JNIEnv {
         }
     }
 
-    /// Deletes a local reference on the JVM. If you use this, you must ensure that all
-    /// other references to the passed JObject are not used. Any use of them past here
+    /// Deletes a local reference on the JVM. If this reduces the refcount to 0, you must ensure
+    /// that all other references to the passed JObject are not used. Any use of them past here
     /// will cause undefined behavior.
     pub fn delete_local_ref(&self, obj: JObject) {
         let env = self.internal_env();
@@ -409,6 +416,7 @@ impl JNIEnv {
         }
     }
 
+    /// Check whether two references refer to the same object
     pub fn is_same_object(&self, obj1: &JObject, obj2: &JObject) -> bool {
         let env = self.internal_env();
 
@@ -418,6 +426,8 @@ impl JNIEnv {
         }
     }
 
+    /// Allocate an object with enough space to hold an instance of the passed class, but do not
+    /// call any constructor or do any initialization
     pub fn alloc_object(&self, cls: &JClass) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -432,6 +442,8 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new object, calling a constructor with the passed args. Constructors are methods
+    /// with the name `<init>`
     pub fn new_object(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -447,6 +459,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get the class of an object
     pub fn get_object_class(&self, obj: &JObject) -> Result<JClass> {
         let env = self.internal_env();
 
@@ -461,6 +474,7 @@ impl JNIEnv {
         }
     }
 
+    /// Check whether an object is an instance of a given class
     pub fn is_instance_of(&self, obj: &JObject, cls: &JClass) -> bool {
         let env = self.internal_env();
 
@@ -470,6 +484,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get a method ID from a class, name, and signature. The signature uses the syntax defined
+    /// in the root documentation
     pub fn get_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
@@ -498,6 +514,9 @@ impl JNIEnv {
         }
     }
 
+    /// Call a method on an object. Takes the object to bind to `this`, the ID of the method, and
+    /// the arguments to pass. Return Err if the method errors, otherwise Ok. Option is None if the
+    /// method is void typed, otherwise a JValue containing the return.
     pub fn call_method(&self, obj: &JObject, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
             return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
@@ -564,9 +583,13 @@ impl JNIEnv {
         }
     }
 
+    /// Call a method on an object without doing virtual lookup, instead using a passed class.
+    /// Takes the object to bind to `this`, the class to use, the ID of the method, and the
+    /// arguments to pass. Return Err if the method errors, otherwise Ok. Option is None if the
+    /// method is void typed, otherwise a JValue containing the return.
     pub fn call_nonvirtual_method(&self, obj: &JObject, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
-            return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
+            return Err(Error::new("Invalid number of arguments for method", ffi::constants::JNI_ERR))
         }
 
         let env = self.internal_env();
@@ -632,6 +655,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get a field ID from a class, name, and type. The type uses the syntax defined in the root
+    /// documentation
     pub fn get_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
@@ -652,6 +677,9 @@ impl JNIEnv {
         }
     }
 
+    /// Get the value of a field on an object. Takes the object to retrieve from and the ID of the
+    /// field. Returns Err if the field can't be retrieved, otherwise Ok with a JValue containing
+    /// the current value
     pub fn get_field(&self, obj: &JObject, id: &JFieldID) -> Result<JValue> {
         let env = self.internal_env();
 
@@ -707,6 +735,8 @@ impl JNIEnv {
         }
     }
 
+    /// Set the value of a field on an object. Takes the object to set the field on and the ID of
+    /// the field. Returns Err if the field can't be set, otherwise Ok.
     pub fn set_field(&self, obj: &JObject, id: &JFieldID, val: JValue) -> Result<()> {
         let env = self.internal_env();
 
@@ -766,6 +796,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get a static method ID from a class, name, and signature. The signature uses the syntax
+    /// defined in the root documentation
     pub fn get_static_method_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JMethodID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
@@ -794,6 +826,9 @@ impl JNIEnv {
         }
     }
 
+    /// Call a static method on an class. Takes the class to use, the ID of the method, and the
+    /// arguments to pass. Return Err if the method errors, otherwise Ok. Option is None if the
+    /// method is void typed, otherwise a JValue containing the return.
     pub fn call_static_method(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
             return Err(Error::new("Invalid number of arguement for method", ffi::constants::JNI_ERR))
@@ -860,6 +895,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get a static field ID from a class, name, and type. The type uses the syntax defined in the
+    /// root documentation
     pub fn get_static_field_id(&self, cls: &JClass, name: &str, sig: &str) -> Result<JFieldID> {
         let env = self.internal_env();
         let c_name = cstr_from_str(name)?;
@@ -880,6 +917,9 @@ impl JNIEnv {
         }
     }
 
+    /// Get the value of a static field on a class. Takes the class to retrieve from and the ID of
+    /// the field. Returns Err if the field can't be retrieved, otherwise Ok with a JValue
+    /// containing the current value
     pub fn get_static_field(&self, cls: &JClass, id: &JFieldID) -> Result<JValue> {
         let env = self.internal_env();
 
@@ -935,6 +975,8 @@ impl JNIEnv {
         }
     }
 
+    /// Set the value of a static field on a class. Takes the class to set the field on and the ID
+    /// of the field. Returns Err if the field can't be set, otherwise Ok.
     pub fn set_static_field(&self, cls: &JClass, id: &JFieldID, val: JValue) -> Result<()> {
         let env = self.internal_env();
 
@@ -994,6 +1036,7 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new [String][JString] object from a slice of characters
     pub fn new_string(&self, chars: &[char]) -> Result<JString> {
         let env = self.internal_env();
 
@@ -1007,6 +1050,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get the length of a [String][JString] in terms of number of [char]s
     pub fn get_string_length(&self, str: &JString) -> usize {
         let env = self.internal_env();
 
@@ -1016,6 +1060,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get a vector of the [char]s in a [String][JString]
     pub fn get_string_chars(&self, str: &JString) -> Vec<char> {
         let env = self.internal_env();
         let mut is_copy = 0;
@@ -1039,6 +1084,7 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new [String][JString] object from a UTF string
     pub fn new_string_utf(&self, str: &str) -> Result<JString> {
         let env = self.internal_env();
         let c_str = cstr_from_str(str)?;
@@ -1051,6 +1097,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get the length of a [String][JString] in terms of number of modified UTF bytes
     pub fn get_string_utf_length(&self, str: &JString) -> usize {
         let env = self.internal_env();
 
@@ -1060,6 +1107,9 @@ impl JNIEnv {
         }
     }
 
+    /// TODO: Return a vec, remove the need to release? Make two methods, one for each?
+    ///
+    /// Get the characters of a [String][JString] as a slice of modified UTF bytes
     pub fn get_string_utf_chars(&self, str: &JString) -> &[u8] {
         let env = self.internal_env();
         let mut is_copy = 0;
@@ -1072,15 +1122,17 @@ impl JNIEnv {
         }
     }
 
-    pub fn release_string_utf_chars(&self, str: &JString, chars: &[i8]) {
+    /// Release the slice of UTF bytes retrieved by [get_string_utf_chars][JNIEnv::get_string_utf_chars]
+    pub fn release_string_utf_chars(&self, str: &JString, chars: &[u8]) {
         let env = self.internal_env();
 
         // SAFETY: Internal pointer use
         unsafe {
-            env.release_string_utf_chars(str.borrow_ptr(), chars.as_ptr())
+            env.release_string_utf_chars(str.borrow_ptr(), chars.as_ptr() as _)
         }
     }
 
+    /// Get the length of an array
     pub fn get_array_length(&self, array: &JArray) -> usize {
         let env = self.internal_env();
 
@@ -1090,6 +1142,8 @@ impl JNIEnv {
         }
     }
 
+    /// Create a new array of objects, with a type of the given class and initialized to the given
+    /// object value.
     pub fn new_object_array(&self, len: usize, cls: &JClass, init: Option<&JObject>) -> Result<JObjectArray> {
         let env = self.internal_env();
 
@@ -1112,6 +1166,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get the element of an object array at a given index
     pub fn get_object_array_element(&self, array: &JObjectArray, idx: usize) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -1130,6 +1185,7 @@ impl JNIEnv {
         }
     }
 
+    /// Set the element of an object array at a given index
     pub fn set_object_array_element(&self, array: &JObjectArray, idx: usize, val: &JObject) -> Result<()> {
         let env = self.internal_env();
 
@@ -1690,6 +1746,8 @@ impl JNIEnv {
         }
     }
 
+    /// Get the type of a reference, this function can be used to determine if a reference has been
+    /// GCed and is thus no longer safe to use
     pub fn get_object_ref_type(&self, obj: &JObject) -> JRefType {
         let env = self.internal_env();
 
@@ -1700,6 +1758,7 @@ impl JNIEnv {
         }
     }
 
+    /// Get the module a class is defined in
     pub fn get_module(&self, cls: &JClass) -> Result<JObject> {
         let env = self.internal_env();
 

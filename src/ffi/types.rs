@@ -134,13 +134,13 @@ pub enum JObjectRefType {
 /// Data for registering a native method
 #[repr(C)]
 pub struct JNINativeMethod {
-    name: *mut i8,
-    signature: *mut i8,
+    name: *const i8,
+    signature: *const i8,
     ptr: *mut c_void
 }
 
 impl JNINativeMethod {
-    pub fn new(name: *mut i8, signature: *mut i8, ptr: *mut c_void) -> JNINativeMethod {
+    pub fn new(name: *const i8, signature: *const i8, ptr: *mut c_void) -> JNINativeMethod {
         JNINativeMethod {
             name,
             signature,

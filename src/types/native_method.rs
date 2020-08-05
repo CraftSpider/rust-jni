@@ -1,30 +1,42 @@
 use crate::{ffi, JavaType};
-use std::intrinsics::transmute;
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 
 pub struct JNINativeMethod {
-    name: String,
-    signature: String,
+    name: CString,
+    signature: CString,
     ptr: *mut c_void
 }
 
 
 impl JNINativeMethod {
-    // TODO: Replace with extern "system" fn once varargs are a thing
+
+    /// TODO: Replace with extern "system" fn once varargs are a thing
     pub fn new<U: JavaType>(name: &str, signature: &str, fn_ptr: *mut c_void) -> JNINativeMethod {
         // SAFETY: As long as signature is correct, JNI doesn't actually use this internal type
         JNINativeMethod {
-            name: String::from(name),
-            signature: String::from(signature),
+            name: CString::new(name).expect("Expected valid CString"),
+            signature: CString::new(signature).expect("Expected valid CString"),
             ptr: fn_ptr
         }
     }
 
     pub fn make_ffi_vec(slice: &[JNINativeMethod]) -> Vec<ffi::JNINativeMethod> {
-        unimplemented!()
+        let mut out = Vec::new();
+
+        for i in 0..slice.len() {
+            unsafe {
+                out.push(slice[i].as_ffi())
+            }
+        }
+
+        out
     }
 
     pub unsafe fn as_ffi(&self) -> ffi::JNINativeMethod {
-        unimplemented!()
+        ffi::JNINativeMethod::new(
+            self.name.as_ptr(),
+            self.signature.as_ptr(),
+            self.ptr
+        )
     }
 }

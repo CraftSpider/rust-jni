@@ -5,6 +5,10 @@
 //! code. It trades off some efficiency and control in the name of greater soundness and better
 //! error handling.
 //!
+//! # Type Signatures
+//!
+//!
+//!
 //! # Example of a #[rust_jni_proc::java] function
 //!
 //! ```
@@ -36,7 +40,7 @@
 //! - Must return by value
 //! - Must include `class = ""`, may either use actual name or `name = ""`
 
-#![allow(unused)]
+// #![allow(unused)]
 
 #![feature(c_variadic)]
 #![feature(never_type)]

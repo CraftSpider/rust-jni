@@ -58,7 +58,7 @@ macro_rules! downcast {
 macro_rules! upcast {
     ($x:ident, $y:ident) => {
         impl<'a> JavaUpCast<$y<'a>> for $x<'a> {
-            fn upcast(self, env: &JNIEnv) -> $y<'a> {
+            fn upcast(self, _env: &JNIEnv) -> $y<'a> {
                 // TODO: Do env check
                 $y::new(self.backing_ptr as *mut ffi::$y).unwrap()
             }
@@ -69,7 +69,7 @@ macro_rules! upcast {
         }
 
         impl<'a, 'b> JavaUpCast<&'b $y<'a>> for &'b $x<'a> {
-            fn upcast(self, env: &JNIEnv) -> &'b $y<'a> {
+            fn upcast(self, _env: &JNIEnv) -> &'b $y<'a> {
                 // TODO: Do env check
                 unsafe {
                     &*(self as *const $x as *const $y)
@@ -143,30 +143,6 @@ impl JFieldID {
 
     pub unsafe fn borrow_ptr(&self) -> *const ffi::JFieldID {
         self.real_id
-    }
-}
-
-
-#[derive(Debug)]
-pub struct JByteBuffer<'a> {
-    backing_ptr: *mut ffi::JObject,
-    _a: PhantomData<&'a [u8]>
-}
-
-impl JByteBuffer<'_> {
-    pub fn new<'a>(ptr: *mut ffi::JObject) -> Result<JByteBuffer<'a>, Error> {
-        if ptr.is_null() {
-            Err(Error::new("JByteBuffer must be constructed from a non-null pointer", ffi::constants::JNI_ERR))
-        } else {
-            Ok(JByteBuffer {
-                backing_ptr: ptr,
-                _a: PhantomData
-            })
-        }
-    }
-
-    pub unsafe fn borrow_ptr(&self) -> *mut ffi::JObject {
-        self.backing_ptr
     }
 }
 
