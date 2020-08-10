@@ -143,27 +143,40 @@ mod tests {
     use rust_jni_proc::java;
     use crate::types::{JavaDownCast, JObject, JClass, JString};
     use crate::env::JNIEnv;
+    use crate::JThrowable;
+
+    // Compile tests
+
+    #[java(class = "java.lang.Foo", name = "Bar")]
+    fn func(env: &JNIEnv) {
+
+    }
+
+    #[java(class = "java.lang.Foo", name = "Foo")]
+    fn func(env: &JNIEnv, obj: JObject, arg1: JClass, arg2: Option<JString>) -> JObject {
+        JObject::new(std::ptr::null_mut()).unwrap()
+    }
+
+    #[java(class = "java.lang.Foo")]
+    fn TestName(env: &JNIEnv) -> Option<JObject> {
+        None
+    }
+
+    #[java(class = "temp.foo.Foo")]
+    fn func(env: &JNIEnv, obj: JObject) -> Result<JObject, Error> {
+        Err(Error::new("", -1))
+    }
+
+    #[java(class = "temp.bar.Bar")]
+    fn func(env: &JNIEnv, obj: JObject) -> Result<JObject, JThrowable> {
+        Ok(JObject::new(std::ptr::null_mut()).unwrap())
+    }
 
     fn check_cls(env: &JNIEnv, name: &str) {
         let cls = env.find_class(name);
         println!("{:?}", cls);
         cls.unwrap();
     }
-
-    // #[java(class = "java.lang.Foo", name = "Bar")]
-    // fn func(env: &JNIEnv) {
-    //
-    // }
-    //
-    // #[java(class = "java.lang.Foo", name = "Foo")]
-    // fn func(env: &JNIEnv, obj: &JObject, arg1: &JClass, arg2: Option<&JString>) -> JObject {
-    //     JObject::new(std::ptr::null_mut()).unwrap()
-    // }
-    //
-    // #[java(class = "java.lang.Foo")]
-    // fn TestName(env: &JNIEnv) -> Option<JObject> {
-    //     None
-    // }
 
     #[test]
     fn test() {

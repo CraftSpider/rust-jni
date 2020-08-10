@@ -35,12 +35,21 @@
 //!   are using the pointers in JNI-sound ways.
 //!
 //! Macro Rules:
-//! - Must take environment as first param
-//! - Must take all types by value
-//! - Must return by value
+//! - Output function will have a lifetime param 'a which is used for object arguments,
+//!   forbidding them from outliving the function
+//! - Must take environment reference as first param
+//! - Arguments and returns must not be aliased
+//! - Possible Arguments:
+//!   - `JBoolean-JDouble`: Takes the native type
+//!   - `JObject`: Takes a non-null object
+//!   - `Option<JObject>`: Takes a null object
+//! - Possible Returns:
+//!   - Any valid argument: Returns that value
+//!   - `Result<[Any arg], JThrowable>`: Returns or throws
+//!   - `Result<[Any arg], Error>`: Returns or panics
 //! - Must include `class = ""`, may either use actual name or `name = ""`
 
-// #![allow(unused)]
+#![allow(unused)]
 
 #![feature(c_variadic)]
 #![feature(never_type)]
