@@ -1,2 +1,5 @@
 /target
 Cargo.lock
+
+rust_jni_proc/target
+rust_jni_proc/Cargo.lock

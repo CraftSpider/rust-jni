@@ -92,6 +92,29 @@ pub enum JNativeSlice<'a> {
     Double(&'a mut [JDouble])
 }
 
+impl<'a> JNativeSlice<'a> {
+    pub unsafe fn borrow_ptr(&self) -> *mut std::ffi::c_void {
+        match self {
+            JNativeSlice::Boolean(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Byte(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Char(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Short(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Int(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Long(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Float(slice) =>
+                slice.as_ptr() as _,
+            JNativeSlice::Double(slice) =>
+                slice.as_ptr() as _
+        }
+    }
+}
+
 pub enum JNativeVec {
     Boolean(Vec<bool>),
     Byte(Vec<i8>),
