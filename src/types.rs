@@ -1,3 +1,9 @@
+//!
+//! Module containing higher-level wrapper JNI types, used by the safe abstractions provided by this
+//! library
+//!
+
+// Public modules
 
 pub mod object;
 pub mod array;
@@ -6,6 +12,8 @@ pub mod value;
 pub mod version;
 pub mod cast;
 pub mod native_method;
+
+// Public re-exports
 
 pub use object::{
     JMethodID, JFieldID,
@@ -29,14 +37,17 @@ pub use native_method::JNINativeMethod;
 
 pub use super::ffi::{JBoolean, JByte, JChar, JShort, JInt, JLong, JFloat, JDouble};
 
-pub trait JavaType {}
+// Marker trait for types that are valid for use in JNI functions
 
-impl JavaType for JBoolean {}
-impl JavaType for JByte {}
-impl JavaType for JChar {}
-impl JavaType for JShort {}
-impl JavaType for JInt {}
-impl JavaType for JLong {}
-impl JavaType for JFloat {}
-impl JavaType for JDouble {}
-impl JavaType for *mut super::ffi::JObject {}
+// TODO: Find a way to use this with proc macro, for compile-time type checking???
+pub unsafe trait JavaType {}
+
+unsafe impl JavaType for JBoolean {}
+unsafe impl JavaType for JByte {}
+unsafe impl JavaType for JChar {}
+unsafe impl JavaType for JShort {}
+unsafe impl JavaType for JInt {}
+unsafe impl JavaType for JLong {}
+unsafe impl JavaType for JFloat {}
+unsafe impl JavaType for JDouble {}
+unsafe impl JavaType for *mut super::ffi::JObject {}

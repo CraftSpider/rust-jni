@@ -1,7 +1,7 @@
 
 use crate::ffi::constants;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub enum JNIVersion {
     Ver11,
     Ver12,

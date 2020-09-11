@@ -85,7 +85,7 @@ macro_rules! upcast {
 
 
 // TODO: Maybe preserve method name / staticness?
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct JMethodID {
     real_id: *const ffi::JMethodID,
     ret_type: JType,
@@ -119,7 +119,7 @@ impl JMethodID {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct JFieldID {
     real_id: *const ffi::JFieldID,
     ty: JNonVoidType

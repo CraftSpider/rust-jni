@@ -1,3 +1,6 @@
+//!
+//! Module containing definitions of FFI-safe JNI types
+//!
 
 use std::slice;
 use std::ffi::{c_void, CString};
@@ -9,12 +12,14 @@ use crate::error::Error;
 /// Semi-opaque struct for the JNIEnv variable in interfaces
 #[repr(transparent)]
 pub struct JNIEnv {
+    /// Function dispatch table for JNIEnv instances
     pub functions: *const JNINativeInterface
 }
 
 /// Semi-opaque struct for the JavaVM variable in interfaces
 #[repr(transparent)]
 pub struct JavaVM {
+    /// Function dispatch table for JavaVM instances
     pub functions: *const JNIInvokeInterface
 }
 
@@ -28,7 +33,8 @@ pub type JInt = i32;
 pub type JLong = i64;
 
 /// Real type for JBoolean on the JVM
-pub type JBoolean = u8;
+pub type JBoolean = bool;
+
 /// Real type for JChar on the JVM
 pub type JChar = u16;
 
@@ -111,23 +117,36 @@ pub struct JObjectArray { _priv: [u8; 0] }
 /// An FFI-safe union of valid argument types
 #[repr(C)]
 pub union JValue {
+    /// Java primitive boolean value
     pub z: JBoolean,
+    /// Java primitive byte value
     pub b: JByte,
+    /// Java primitive char value
     pub c: JChar,
+    /// Java primitive short value
     pub s: JShort,
+    /// Java primitive int value
     pub i: JInt,
+    /// Java primitive long value
     pub j: JLong,
+    /// Java primitive float value
     pub f: JFloat,
+    /// Java primitive double value
     pub d: JDouble,
+    /// Java Object value
     pub l: *mut JObject
 }
 
 /// Possible JVM reference types
 #[repr(C)]
 pub enum JObjectRefType {
+    /// Reference is no longer valid
     JNIInvalidRefType = 0,
+    /// Reference is valid for the life of the current scope
     JNILocalRefType = 1,
+    /// Reference is valid forever
     JNIGlobalRefType = 2,
+    /// Reference is valid as long as non-weak references exist
     JNIWeakGlobalRefType = 3
 }
 
@@ -140,6 +159,8 @@ pub struct JNINativeMethod {
 }
 
 impl JNINativeMethod {
+
+    /// Create new JNINativeMethod struct out of parts
     pub fn new(name: *const i8, signature: *const i8, ptr: *mut c_void) -> JNINativeMethod {
         JNINativeMethod {
             name,
@@ -147,17 +168,20 @@ impl JNINativeMethod {
             ptr
         }
     }
+
 }
 
 /// Data for attaching a thread to the JVM
 #[repr(C)]
 pub struct JavaVMAttachArgs {
-    pub version: JInt,
-    pub name: *mut i8,
-    pub group: *mut JObject
+    version: JInt,
+    name: *mut i8,
+    group: *mut JObject
 }
 
 impl JavaVMAttachArgs {
+
+    /// Create new JavaVMAttachArgs from a JNI version
     pub fn new(version: JInt) -> JavaVMAttachArgs {
         JavaVMAttachArgs {
             version,
@@ -165,6 +189,7 @@ impl JavaVMAttachArgs {
             group: std::ptr::null_mut()
         }
     }
+
 }
 
 /// Data for JVM startup options
@@ -176,10 +201,9 @@ pub struct JavaVMOption {
 
 impl Debug for JavaVMOption {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let option_string: CString;
-        unsafe {
-            option_string = CString::from_raw(self.option_string);
-        }
+        let option_string = unsafe {
+            CString::from_raw(self.option_string)
+        };
 
         write!(
             f,
@@ -200,15 +224,18 @@ pub struct JavaVMInitArgs {
 }
 
 impl JavaVMInitArgs {
+
+    /// Create new JavaVMInitArgs from a JNI version
     pub fn new(version: JInt) -> JavaVMInitArgs {
         JavaVMInitArgs {
             version,
             num_options: 0,
             options: std::ptr::null_mut(),
-            ignore_unrecognized: 0
+            ignore_unrecognized: false
         }
     }
 
+    /// Add a startup option to these initialization args
     pub fn add_option(&mut self, option: JavaVMOption) {
         let layout = Layout::new::<JavaVMOption>();
 
@@ -235,6 +262,7 @@ impl JavaVMInitArgs {
         }
     }
 
+    /// Remove a startup option from these initialization args by index
     pub fn remove_option(&mut self, idx: i32) -> Result<(), Error>{
         if idx >= self.num_options || idx < 0 {
             return Err(Error::new(
@@ -294,34 +322,34 @@ impl Debug for JavaVMInitArgs {
 // Marker Trait implementations
 
 /// Marker for all types that can be transmuted safely into a JObject without checks
-pub trait IsObject {}
+pub unsafe trait IsObject {}
 
-impl IsObject for JObject {}
-impl IsObject for JWeak {}
-impl IsObject for JClass {}
-impl IsObject for JThrowable {}
-impl IsObject for JString {}
-impl IsObject for JArray {}
-impl IsObject for JBooleanArray {}
-impl IsObject for JByteArray {}
-impl IsObject for JCharArray {}
-impl IsObject for JShortArray {}
-impl IsObject for JIntArray {}
-impl IsObject for JLongArray {}
-impl IsObject for JFloatArray {}
-impl IsObject for JDoubleArray {}
-impl IsObject for JObjectArray {}
+unsafe impl IsObject for JObject {}
+unsafe impl IsObject for JWeak {}
+unsafe impl IsObject for JClass {}
+unsafe impl IsObject for JThrowable {}
+unsafe impl IsObject for JString {}
+unsafe impl IsObject for JArray {}
+unsafe impl IsObject for JBooleanArray {}
+unsafe impl IsObject for JByteArray {}
+unsafe impl IsObject for JCharArray {}
+unsafe impl IsObject for JShortArray {}
+unsafe impl IsObject for JIntArray {}
+unsafe impl IsObject for JLongArray {}
+unsafe impl IsObject for JFloatArray {}
+unsafe impl IsObject for JDoubleArray {}
+unsafe impl IsObject for JObjectArray {}
 
 /// Marker for all types that can be transmuted safely into a JArray without checks
-pub trait IsArray {}
+pub unsafe trait IsArray {}
 
-impl IsArray for JArray {}
-impl IsArray for JBooleanArray {}
-impl IsArray for JByteArray {}
-impl IsArray for JCharArray {}
-impl IsArray for JShortArray {}
-impl IsArray for JIntArray {}
-impl IsArray for JLongArray {}
-impl IsArray for JFloatArray {}
-impl IsArray for JDoubleArray {}
-impl IsArray for JObjectArray {}
+unsafe impl IsArray for JArray {}
+unsafe impl IsArray for JBooleanArray {}
+unsafe impl IsArray for JByteArray {}
+unsafe impl IsArray for JCharArray {}
+unsafe impl IsArray for JShortArray {}
+unsafe impl IsArray for JIntArray {}
+unsafe impl IsArray for JLongArray {}
+unsafe impl IsArray for JFloatArray {}
+unsafe impl IsArray for JDoubleArray {}
+unsafe impl IsArray for JObjectArray {}

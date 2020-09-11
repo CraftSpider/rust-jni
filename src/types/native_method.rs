@@ -7,7 +7,6 @@ pub struct JNINativeMethod {
     ptr: *mut c_void
 }
 
-
 impl JNINativeMethod {
 
     /// TODO: Replace with extern "system" fn once varargs are a thing

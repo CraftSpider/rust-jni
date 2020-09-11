@@ -15,29 +15,17 @@ impl TypeSignature {
                 primitive_symbol(name).into()
             }
             TypeSignature::Class(name) => {
-                name.replace(".", "/")
+                format!("L{};", name.replace(".", "/"))
             }
             TypeSignature::Array(name) => {
-                let mut lower = name.mangled();
-                if let TypeSignature::Class(_) = name.as_ref() {
-                    lower = format!("L{};", lower)
-                }
+                let lower = name.mangled();
                 format!("[{}", lower)
             }
             TypeSignature::Method(params, ret) => {
                 let params: String = params.iter().map(|val| {
-                    let mut param = val.mangled();
-                    if let TypeSignature::Class(_) = val {
-                        param = format!("L{};", param);
-                    }
-                    param
+                    val.mangled()
                 }).collect();
-
-                let mut ret_mangle = ret.mangled();
-                if let TypeSignature::Class(_) = ret.as_ref() {
-                    ret_mangle = format!("L{};", ret_mangle);
-                }
-
+                let ret_mangle = ret.mangled();
                 format!("({}){}", params, ret_mangle)
             }
         }
@@ -212,7 +200,7 @@ mod tests {
     fn test_mangle() {
         assert_eq!(mangle_class("int").mangled(), "I");
         assert_eq!(mangle_class("int[]").mangled(), "[I");
-        assert_eq!(mangle_class("java.lang.Object").mangled(), "java/lang/Object");
+        assert_eq!(mangle_class("java.lang.Object").mangled(), "Ljava/lang/Object;");
         assert_eq!(mangle_class("java.lang.String[]").mangled(), "[Ljava/lang/String;");
         assert_eq!(mangle_class("(java.lang.Object, int) -> java.lang.String").mangled(), "(Ljava/lang/Object;I)Ljava/lang/String;");
         assert_eq!(mangle_class("(int, long[], java.lang.ArrayList) -> void").mangled(), "(I[JLjava/lang/ArrayList;)V");

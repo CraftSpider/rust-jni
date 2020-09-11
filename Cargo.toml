@@ -9,3 +9,6 @@ build = "build.rs"
 
 [dependencies]
 rust_jni_proc = { path = "rust_jni_proc" }
+
+[build-dependencies]
+regex = "^1.0"

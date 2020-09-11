@@ -16,10 +16,10 @@
 //! use rust_jni_proc::java;
 //!
 //! #[java(class = "com.foo.Bar")]
-//! fn FuncName(env: &JNIEnv, this: &JObject, arg1: &JObject, arg2: JInt) -> &JClass {
-//!     let class = env.get_object_class(arg1).expect("Couldn't get object class");
+//! fn FuncName(env: &JNIEnv, this: JObject, arg1: JObject, arg2: JInt) -> JClass {
+//!     let class = env.get_object_class(&arg1).expect("Couldn't get object class");
 //!
-//!     &class
+//!     class
 //! }
 //! ```
 //!
@@ -49,11 +49,20 @@
 //!   - `Result<[Any arg], Error>`: Returns or panics
 //! - Must include `class = ""`, may either use actual name or `name = ""`
 
-#![allow(unused)]
+#![allow(dead_code)]
+
+#![warn(missing_docs)]
 
 #![feature(c_variadic)]
 #![feature(never_type)]
 #![feature(alloc_layout_extra)]
+
+// Private modules
+
+#[cfg(test)]
+mod tests;
+
+// Public modules
 
 pub mod error;
 pub mod ffi;
@@ -63,6 +72,8 @@ pub mod env;
 pub mod types;
 pub mod mangling;
 pub mod macros;
+
+// Public re-exports
 
 pub use error::{Error, Result};
 

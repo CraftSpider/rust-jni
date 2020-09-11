@@ -1,3 +1,6 @@
+//!
+//! Module containing extern definitions of JNI functions
+//!
 
 use crate::ffi::types::*;
 

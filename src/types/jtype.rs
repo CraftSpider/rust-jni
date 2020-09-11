@@ -1,6 +1,6 @@
 use crate::ffi;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JType {
     Object,
     Boolean,
@@ -121,7 +121,7 @@ impl JType {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JNonVoidType {
     Object,
     Boolean,
@@ -134,7 +134,7 @@ pub enum JNonVoidType {
     Double
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JNativeType {
     Boolean,
     Byte,
@@ -146,7 +146,7 @@ pub enum JNativeType {
     Double
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JRefType {
     Invalid,
     Local,
