@@ -1,3 +1,7 @@
+//!
+//! Module containing types relevant to java arrays
+//!
+
 
 use crate::{ffi, JavaDownCast};
 use crate::error::Result;
@@ -8,19 +12,33 @@ use crate::types::{
 };
 use crate::JNativeType;
 
+///
+/// An enum representing any java primitive array type. Can be converted into its backing reference
+/// through [`as_jarray`][Self::as_jarray]
+///
 pub enum JNativeArray<'a> {
+    /// Java primitive boolean array
     Boolean(JBooleanArray<'a>),
+    /// Java primitive byte array
     Byte(JByteArray<'a>),
+    /// Java primitive char array
     Char(JCharArray<'a>),
+    /// Java primitive short array
     Short(JShortArray<'a>),
+    /// Java primitive int array
     Int(JIntArray<'a>),
+    /// Java primitive long array
     Long(JLongArray<'a>),
+    /// Java primitive float array
     Float(JFloatArray<'a>),
+    /// Java primitive double array
     Double(JDoubleArray<'a>)
 }
 
 impl JNativeArray<'_> {
 
+    /// Create a new JNativeArray from a backing pointer and array type. Unsafe, as we trust that
+    /// the native type is correct.
     pub unsafe fn new_raw<'a>(arr: *mut ffi::JArray, ty: JNativeType) -> Result<JNativeArray<'a>> {
         match ty {
             JNativeType::Boolean => {
@@ -50,6 +68,7 @@ impl JNativeArray<'_> {
         }
     }
 
+    /// Get the backing reference of this object as a generic JArray reference
     pub fn as_jarray(&self) -> &JArray {
         match self {
             JNativeArray::Boolean(arr) => {
@@ -81,18 +100,32 @@ impl JNativeArray<'_> {
 
 }
 
+///
+/// An enum representing a slice of a java primitive array
+///
 pub enum JNativeSlice<'a> {
+    /// Java primitive boolean slice
     Boolean(&'a mut [JBoolean]),
+    /// Java primitive byte slice
     Byte(&'a mut [JByte]),
+    /// Java primitive char slice
     Char(&'a mut [JChar]),
+    /// Java primitive short slice
     Short(&'a mut [JShort]),
+    /// Java primitive int slice
     Int(&'a mut [JInt]),
+    /// Java primitive long slice
     Long(&'a mut [JLong]),
+    /// Java primitive float slice
     Float(&'a mut [JFloat]),
+    /// Java primitive double slice
     Double(&'a mut [JDouble])
 }
 
 impl<'a> JNativeSlice<'a> {
+
+    /// Get the backing pointer of this object. Unsafe, as this pointer may be used without
+    /// the safety provided by this object
     pub unsafe fn borrow_ptr(&self) -> *mut std::ffi::c_void {
         match self {
             JNativeSlice::Boolean(slice) =>
@@ -115,20 +148,37 @@ impl<'a> JNativeSlice<'a> {
     }
 }
 
+///
+/// An enum representing a vector containing elements of one of the java primitive types
+///
 pub enum JNativeVec {
+    /// Vector of boolean values
     Boolean(Vec<bool>),
+    /// Vector of byte values
     Byte(Vec<i8>),
+    /// Vector of char values
     Char(Vec<char>),
+    /// Vector of short values
     Short(Vec<i16>),
+    /// Vector of int values
     Int(Vec<i32>),
+    /// Vector of long values
     Long(Vec<i64>),
+    /// Vector of float values
     Float(Vec<f32>),
+    /// Vector of double values
     Double(Vec<f64>)
 }
 
+///
+/// An enum representing the various modes used in releasing a java array region
+///
 pub enum ReleaseMode {
+    /// Copy the values back to the array, then free the slice
     CopyFree,
+    /// Copy the values back to the array, but don't free the slice
     Commit,
+    /// Don't copy the values back to the array, free the slice
     Abort
 }
 

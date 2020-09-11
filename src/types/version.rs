@@ -1,14 +1,27 @@
+//!
+//! Module containing an enum representing possible JNI versions
+//!
 
 use crate::ffi::constants;
 
+///
+/// An enum containing variants representing all the supported JNI versions
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub enum JNIVersion {
+    /// JNI 1.1
     Ver11,
+    /// JNI 1.2
     Ver12,
+    /// JNI 1.4
     Ver14,
+    /// JNI 1.6
     Ver16,
+    /// JNI 1.8
     Ver18,
+    /// JNI 9
     Ver9,
+    /// JNI 10
     Ver10
 }
 

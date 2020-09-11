@@ -39,7 +39,11 @@ pub use super::ffi::{JBoolean, JByte, JChar, JShort, JInt, JLong, JFloat, JDoubl
 
 // Marker trait for types that are valid for use in JNI functions
 
-// TODO: Find a way to use this with proc macro, for compile-time type checking???
+///
+/// A trait representing the possible java types. Handy for restricting the values you take in
+/// to those that can be passed on to the JNI in some way.
+///
+/// TODO: Find a way to use this with proc macro, for compile-time type checking???
 pub unsafe trait JavaType {}
 
 unsafe impl JavaType for JBoolean {}

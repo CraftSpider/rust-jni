@@ -1,14 +1,27 @@
+//!
+//! Module containing support for parsing type signatures into an AST, and then outputting that AST
+//! in either a pretty form, or a form compatible with the JNI type mangling scheme.
+//!
 
 use crate::types::JType;
 
+///
+/// An enum representing a JNI type signature
+///
 pub enum TypeSignature {
+    /// A primitive type
     Primitive(String),
+    /// An object class type
     Class(String),
+    /// An array type
     Array(Box<TypeSignature>),
+    /// A method type
     Method(Vec<TypeSignature>, Box<TypeSignature>)
 }
 
 impl TypeSignature {
+
+    /// Get the mangled form of this type signature
     pub fn mangled(&self) -> String {
         match self {
             TypeSignature::Primitive(name) => {
@@ -31,6 +44,7 @@ impl TypeSignature {
         }
     }
 
+    /// Get the pretty-printed form of this signature
     pub fn pretty(&self) -> String {
         match self {
             TypeSignature::Primitive(name) => {
@@ -57,6 +71,7 @@ impl TypeSignature {
         }
     }
 
+    /// Get the JType this signature represents
     pub fn java_type(&self) -> JType {
         match self {
             TypeSignature::Primitive(name) => {
@@ -162,7 +177,7 @@ fn handle_args(args: &str) -> Vec<TypeSignature> {
     }
 }
 
-
+/// Take a 'pretty' type signature and convert it into a TypeSignature object
 pub fn mangle_class(name: &str) -> TypeSignature {
     let name = name.trim();
 

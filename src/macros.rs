@@ -1,3 +1,7 @@
+//!
+//! A module containing macro helpers, for more efficient usage of the JNI in rust code. Handles
+//! some of the possible pitfalls for you as much as possible.
+//!
 
 #[macro_export]
 macro_rules! get_cls {

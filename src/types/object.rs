@@ -1,3 +1,9 @@
+//!
+//! Module containing smart references for common Object types.
+//! They can be up- and down-cast to other Object types safely, and cannot outlive their intended
+//! spans.
+//!
+
 
 use crate::ffi;
 use crate::error::Error;
@@ -8,6 +14,11 @@ use std::marker::PhantomData;
 
 macro_rules! smart_obj {
     ($x:ident) => {
+
+        ///
+        /// A struct representing a pointer to the $x type, with added guarantee of memory-safety
+        /// in usage.
+        ///
         #[derive(Debug)]
         pub struct $x<'a> {
             backing_ptr: *mut ffi::$x,
@@ -15,6 +26,8 @@ macro_rules! smart_obj {
         }
 
         impl $x<'_> {
+
+            /// Create a new instance of this struct from a backing pointer
             pub fn new<'a>(ptr: *mut ffi::$x) -> Result<$x<'a>, Error> {
                 if ptr.is_null() {
                     Err(Error::new(&format!("{} must be constructed from non-null pointer", stringify!($x)), ffi::constants::JNI_ERR))
@@ -26,9 +39,12 @@ macro_rules! smart_obj {
                 }
             }
 
+            /// Get the backing pointer of this object. Unsafe, as this pointer may be used without
+            /// the safety provided by this object
             pub unsafe fn borrow_ptr(&self) -> *mut ffi::$x {
                 self.backing_ptr
             }
+
         }
     }
 }
@@ -84,7 +100,11 @@ macro_rules! upcast {
 }
 
 
-// TODO: Maybe preserve method name / staticness?
+///
+/// A struct representing a Java Method ID. Knows its own return type and the number of args,
+/// preventing memory unsafety while calling methods with it
+///
+/// TODO: Maybe preserve method name / staticness?
 #[derive(Debug, PartialEq)]
 pub struct JMethodID {
     real_id: *const ffi::JMethodID,
@@ -93,6 +113,8 @@ pub struct JMethodID {
 }
 
 impl JMethodID {
+
+    /// Create a new JMethodID from a raw MethodID, return type, and number of args
     pub fn new(id: *const ffi::JMethodID, ret: JType, num_args: usize) -> Result<JMethodID, Error> {
         if id.is_null() {
             Err(Error::new("JMethodID must be constructed from a non-null pointer", ffi::constants::JNI_ERR))
@@ -105,20 +127,29 @@ impl JMethodID {
         }
     }
 
+    /// Get the return type of this method
     pub fn ret_ty(&self) -> JType {
         self.ret_type
     }
 
+    /// Get the number of args in this method
     pub fn num_args(&self) -> usize {
         self.num_args
     }
 
+    /// Get the backing pointer of this method. Unsafe, as this pointer may be used without the
+    /// safety provided by this object
     pub unsafe fn borrow_ptr(&self) -> *const ffi::JMethodID {
         self.real_id
     }
 }
 
 
+///
+/// A struct representing a Java Field ID. Knows its own type, preventing memory unsafety while
+/// calling methods with it
+///
+/// TODO: Maybe preserve field name /  staticness?
 #[derive(Debug, PartialEq)]
 pub struct JFieldID {
     real_id: *const ffi::JFieldID,
@@ -126,6 +157,8 @@ pub struct JFieldID {
 }
 
 impl JFieldID {
+
+    /// Create a new JFieldID from a raw FieldID and type
     pub fn new(id: *const ffi::JFieldID, ty: JNonVoidType) -> Result<JFieldID, Error> {
         if id.is_null() {
             Err(Error::new("JFieldID must be constructed from a non-null pointer", ffi::constants::JNI_ERR))
@@ -137,10 +170,13 @@ impl JFieldID {
         }
     }
 
+    /// Get the type of this field
     pub fn ty(&self) -> JNonVoidType {
         self.ty
     }
 
+    /// Get the backing pointer of this field. Unsafe, as this pointer may be used without the
+    /// safety provided by this object
     pub unsafe fn borrow_ptr(&self) -> *const ffi::JFieldID {
         self.real_id
     }
