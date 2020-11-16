@@ -98,6 +98,28 @@ impl JNativeArray<'_> {
         }
     }
 
+    /// Get the JNativeType associated with this Array
+    pub fn jtype(&self) -> JNativeType {
+        match self {
+            JNativeArray::Boolean(_) =>
+                JNativeType::Boolean,
+            JNativeArray::Byte(_) =>
+                JNativeType::Byte,
+            JNativeArray::Char(_) =>
+                JNativeType::Char,
+            JNativeArray::Short(_) =>
+                JNativeType::Short,
+            JNativeArray::Int(_) =>
+                JNativeType::Int,
+            JNativeArray::Long(_) =>
+                JNativeType::Long,
+            JNativeArray::Float(_) =>
+                JNativeType::Float,
+            JNativeArray::Double(_) =>
+                JNativeType::Double,
+        }
+    }
+
 }
 
 ///
@@ -146,6 +168,28 @@ impl<'a> JNativeSlice<'a> {
                 slice.as_ptr() as _
         }
     }
+
+    /// Get the JNativeType associated with this Slice
+    pub fn jtype(&self) -> JNativeType {
+        match self {
+            JNativeSlice::Boolean(_) =>
+                JNativeType::Boolean,
+            JNativeSlice::Byte(_) =>
+                JNativeType::Byte,
+            JNativeSlice::Char(_) =>
+                JNativeType::Char,
+            JNativeSlice::Short(_) =>
+                JNativeType::Short,
+            JNativeSlice::Int(_) =>
+                JNativeType::Int,
+            JNativeSlice::Long(_) =>
+                JNativeType::Long,
+            JNativeSlice::Float(_) =>
+                JNativeType::Float,
+            JNativeSlice::Double(_) =>
+                JNativeType::Double,
+        }
+    }
 }
 
 ///
@@ -168,6 +212,32 @@ pub enum JNativeVec {
     Float(Vec<f32>),
     /// Vector of double values
     Double(Vec<f64>)
+}
+
+impl JNativeVec {
+
+    /// Get the JNativeType associated with this Vec
+    pub fn jtype(&self) -> JNativeType {
+        match self {
+            JNativeVec::Boolean(_) =>
+                JNativeType::Boolean,
+            JNativeVec::Byte(_) =>
+                JNativeType::Byte,
+            JNativeVec::Char(_) =>
+                JNativeType::Char,
+            JNativeVec::Short(_) =>
+                JNativeType::Short,
+            JNativeVec::Int(_) =>
+                JNativeType::Int,
+            JNativeVec::Long(_) =>
+                JNativeType::Long,
+            JNativeVec::Float(_) =>
+                JNativeType::Float,
+            JNativeVec::Double(_) =>
+                JNativeType::Double,
+        }
+    }
+
 }
 
 ///

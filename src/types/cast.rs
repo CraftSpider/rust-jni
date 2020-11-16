@@ -3,6 +3,7 @@
 //!
 
 use crate::env::JNIEnv;
+use crate::error::Result;
 
 ///
 /// Trait representing the ability for this reference to be 'downcast', and treated as a reference
@@ -20,7 +21,7 @@ pub trait JavaDownCast<T> {
 ///
 pub trait JavaUpCast<T> {
     /// Does a safe cast to a Java type that inherits from this type
-    fn upcast(self, env: &JNIEnv) -> T;
+    fn upcast(self, env: &JNIEnv) -> Result<T>;
 
     /// Does an unsafe cast to a Java type that inherits from this type
     unsafe fn upcast_raw(self) -> T;

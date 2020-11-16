@@ -147,19 +147,19 @@ fn test_ensure_local_capacity() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "Not yet implemented"]
 fn test_local_frame() {
-    panic!("Not yet implemented")
+    todo!()
 }
 
 #[test]
-#[ignore]
+#[ignore = "Not yet implemented"]
 fn test_global_ref() {
-    panic!("Not yet implemented")
+    todo!()
 }
 
 #[test]
-#[ignore]
+#[ignore = "Not yet implemented"]
 fn test_local_ref() {
-    panic!("Not yet implemented")
+    todo!()
 }

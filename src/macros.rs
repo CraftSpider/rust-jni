@@ -2,6 +2,10 @@
 //! A module containing macro helpers, for more efficient usage of the JNI in rust code. Handles
 //! some of the possible pitfalls for you as much as possible.
 //!
+//! - Global references are valid on any attached thread
+//! - Returns a &JObject instead of a JObject, as deleting the global reference would lead to UB
+//!
+
 
 #[macro_export]
 macro_rules! get_cls {

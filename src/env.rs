@@ -38,7 +38,7 @@ impl JNIEnv {
     /// live as long as the current thread, generally. Thus this type is not marked Send or Sync.
     pub fn new(env: *mut ffi::JNIEnv) -> Result<JNIEnv> {
         if env.is_null() {
-            Err(Error::new("JNIEnv must be constructed from non-null pointer", JNI_ERR))
+            Err(Error::new_null("JNIEnv Constructor"))
         } else {
             // SAFETY: Pointer is definitely not null here
             let version;
@@ -135,7 +135,7 @@ impl JNIEnv {
             .into_int()? as usize;
 
         // SAFETY: Guaranteed safe upcast, we know the type
-        let chars = unsafe { self.get_string_chars(&ret_name.upcast_raw()) };
+        let chars = unsafe { self.get_string_chars(&ret_name.upcast_raw())? };
         let chars: String = chars.into_iter().collect();
         let ret_type = JType::from_name(&chars);
 
@@ -167,7 +167,7 @@ impl JNIEnv {
             .expect("Unexpected null result");
 
         // SAFETY: Guaranteed safe upcast, we know the type
-        let chars = unsafe { self.get_string_chars(&ty_name.upcast_raw()) };
+        let chars = unsafe { self.get_string_chars(&ty_name.upcast_raw())? };
         let chars: String = chars.into_iter().collect();
         let ty = JType::from_name(&chars).as_nonvoid().unwrap();
 
@@ -178,8 +178,9 @@ impl JNIEnv {
         }
     }
 
-    /// TODO: Maybe make is_static part of IDs?
     /// Build a reflected Method object from a class, method ID, and static-ness
+    ///
+    /// TODO: Maybe make is_static part of IDs?
     pub fn to_reflected_method(&self, cls: &JClass, id: &JMethodID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -196,6 +197,8 @@ impl JNIEnv {
     }
 
     /// Build a reflected Field object from a class, field ID, and static-ness
+    ///
+    /// TODO: Maybe make is_static part of IDs?
     pub fn to_reflected_field(&self, cls: &JClass, id: &JFieldID, is_static: bool) -> Result<JObject> {
         let env = self.internal_env();
 
@@ -328,9 +331,10 @@ impl JNIEnv {
         }
     }
 
-    /// TODO: Maybe make this return a new 'environment' so all refs don't outlive it?
     /// Push a frame onto the JVM. All references created within this frame will be freed once it
     /// is closed.
+    ///
+    /// TODO: Maybe make this return a new 'environment' so all refs don't outlive it?
     pub fn push_local_frame(&self, capacity: i32) -> Result<()> {
         let env = self.internal_env();
 
@@ -522,7 +526,7 @@ impl JNIEnv {
             obj.borrow_ptr(), id.borrow_ptr()
         ) };
 
-        Ok(match id.ret_ty() { // TODO: Add error check after calls?
+        let result = match id.ret_ty() {
             JType::Object => {
                 let result = env.call_object_method(raw_obj, raw_id, args.as_ptr());
                 if result.is_null() {
@@ -569,7 +573,13 @@ impl JNIEnv {
                 env.call_void_method(raw_obj, raw_id, args.as_ptr());
                 None
             }
-        })
+        };
+
+        if self.exception_check() {
+            Err(Error::new("Error occured during method call", JNI_ERR))
+        } else {
+            Ok(result)
+        }
     }
 
     /// Call a method on an object without doing virtual lookup, instead using a passed class.
@@ -589,7 +599,7 @@ impl JNIEnv {
             obj.borrow_ptr(), cls.borrow_ptr(), id.borrow_ptr()
         ) };
 
-        Ok(match id.ret_ty() { // TODO: Add error check for non-object calls?
+        let result = match id.ret_ty() {
             JType::Object => {
                 let result = env.call_nonvirtual_object_method(raw_obj, raw_cls, raw_id, args.as_ptr());
                 if result.is_null() {
@@ -636,7 +646,13 @@ impl JNIEnv {
                 env.call_nonvirtual_void_method(raw_obj, raw_cls, raw_id, args.as_ptr());
                 None
             }
-        })
+        };
+
+        if self.exception_check() {
+            Err(Error::new("Error occured during method call", JNI_ERR))
+        } else {
+            Ok(result)
+        }
     }
 
     /// Get a field ID from a class, name, and type. The type uses the syntax defined in the root
@@ -798,7 +814,7 @@ impl JNIEnv {
     /// method is void typed, otherwise a JValue containing the return.
     pub fn call_static_method(&self, cls: &JClass, id: &JMethodID, args: &[JValue]) -> Result<Option<JValue>> {
         if args.len() != id.num_args() {
-            return Err(Error::new("Invalid number of arguement for method", JNI_ERR))
+            return Err(Error::new("Invalid number of arguments for method", JNI_ERR))
         }
 
         let env = self.internal_env();
@@ -809,7 +825,7 @@ impl JNIEnv {
             cls.borrow_ptr(), id.borrow_ptr()
         ) };
 
-        Ok(match id.ret_ty() { // TODO: Add error check for calls?
+        let result = match id.ret_ty() {
             JType::Object => {
                 let result = env.call_static_object_method(raw_cls, raw_id, args.as_ptr());
                 if result.is_null() {
@@ -856,7 +872,13 @@ impl JNIEnv {
                 env.call_static_void_method(raw_cls, raw_id, args.as_ptr());
                 None
             }
-        })
+        };
+
+        if self.exception_check() {
+            Err(Error::new("Error occured during method call", JNI_ERR))
+        } else {
+            Ok(result)
+        }
     }
 
     /// Get a static field ID from a class, name, and type. The type uses the syntax defined in the
@@ -1013,20 +1035,24 @@ impl JNIEnv {
     }
 
     /// Get a vector of the [char]s in a [String][JString]
-    pub fn get_string_chars(&self, str: &JString) -> Vec<char> {
+    pub fn get_string_chars(&self, str: &JString) -> Result<Vec<char>> {
         let env = self.internal_env();
         let mut is_copy = false;
 
         // SAFETY: Internal pointer use
         let chars = unsafe { env.get_string_chars(str.borrow_ptr(), &mut is_copy) };
 
-        // SAFETY: Java verifies returned pointer will be valid until release_string_characters is called
+        if chars.is_null() {
+            return Err(Error::new("Couldn't get string characters", JNI_ERR))
+        }
+
+        // SAFETY: Java verifies returned pointer will be valid until release_string_chars is called
         let raw_slice = unsafe { slice::from_raw_parts(chars, self.get_string_length(str)) };
 
-        let out = Vec::from(raw_slice)
+        let out = raw_slice
             .into_iter()
             .map(|c| {
-                std::char::from_u32(c as u32).expect("Java returned bad char")
+                std::char::from_u32(*c as u32).expect("Java returned bad char")
             })
             .collect();
 
@@ -1035,7 +1061,7 @@ impl JNIEnv {
             env.release_string_chars(str.borrow_ptr(), chars)
         }
 
-        out
+        Ok(out)
     }
 
     /// Create a new [String][JString] object from a UTF string
@@ -1061,29 +1087,29 @@ impl JNIEnv {
         }
     }
 
-    /// TODO: Return a vec, remove the need to release? Make two methods, one for each?
-    ///
     /// Get the characters of a [String][JString] as a slice of modified UTF bytes
-    pub fn get_string_utf_chars(&self, str: &JString) -> &[u8] {
+    pub fn get_string_utf_chars(&self, str: &JString) -> Result<Vec<u8>> {
         let env = self.internal_env();
         let mut is_copy = false;
 
-        // SAFETY: Internal pointer use, Java verifies returned pointer will be valid
-        unsafe {
-            let chars = env.get_string_utf_chars(str.borrow_ptr(), &mut is_copy) as *const u8;
-            let raw_slice = slice::from_raw_parts(chars, self.get_string_utf_length(str));
-            raw_slice
-        }
-    }
+        // SAFETY: Internal pointer use
+        let chars = unsafe { env.get_string_utf_chars(str.borrow_ptr(), &mut is_copy) as *const u8 };
 
-    /// Release the slice of UTF bytes retrieved by [get_string_utf_chars][JNIEnv::get_string_utf_chars]
-    pub fn release_string_utf_chars(&self, str: &JString, chars: &[u8]) {
-        let env = self.internal_env();
+        if chars.is_null() {
+            return Err(Error::new("Couldn't get string characters", JNI_ERR))
+        }
+
+        // SAFETY: Java verifies returned pointer will be valid until release_string_utf_chars is called
+        let raw_slice = unsafe { slice::from_raw_parts(chars, self.get_string_utf_length(str)) };
+
+        let vec: Vec<_> = raw_slice.iter().cloned().collect();
 
         // SAFETY: Internal pointer use
         unsafe {
-            env.release_string_utf_chars(str.borrow_ptr(), chars.as_ptr() as _)
+            env.release_string_utf_chars(str.borrow_ptr(), chars as _)
         }
+
+        Ok(vec)
     }
 
     /// Get the length of an array
@@ -1242,9 +1268,11 @@ impl JNIEnv {
     }
 
     /// Release a whole-array slice of a primitive java array
-    ///
-    /// TODO: Check arr and slice are the same
-    pub fn release_native_array_elements(&self, arr: &JNativeArray, slice: &JNativeSlice, mode: ReleaseMode) {
+    pub fn release_native_array_elements(&self, arr: &JNativeArray, slice: JNativeSlice, mode: ReleaseMode) -> Result<()> {
+        if arr.jtype() != slice.jtype() {
+            return Err(Error::new("Invalid array/slice combo", JNI_ERR))
+        }
+
         let env = self.internal_env();
         let mode = mode.into();
 
@@ -1277,6 +1305,8 @@ impl JNIEnv {
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Get a partial slice of a primitive java array
@@ -1330,9 +1360,11 @@ impl JNIEnv {
     }
 
     /// Release a partial slice of a primitive java array
-    ///
-    /// TODO: Check arr and vec match
     pub fn set_native_array_region(&self, arr: &JNativeArray, start: usize, len: usize, slice: &JNativeVec) -> Result<()> {
+        if arr.jtype() != slice.jtype() {
+            return Err(Error::new("Invalid array/vec combo", JNI_ERR))
+        }
+
         let env = self.internal_env();
         let start = start as i32;
         let len = len as i32;
@@ -1556,9 +1588,11 @@ impl JNIEnv {
     }
 
     /// Release a region of a primitive java array
-    ///
-    /// TODO: Check arr and slice are the same
-    pub fn release_primitive_array_critical(&self, arr: &JNativeArray, slice: &JNativeSlice, mode: ReleaseMode) {
+    pub fn release_primitive_array_critical(&self, arr: &JNativeArray, slice: &JNativeSlice, mode: ReleaseMode) -> Result<()> {
+        if arr.jtype() != slice.jtype() {
+            return Err(Error::new("Invalid array/slice combo", JNI_ERR))
+        }
+
         let env = self.internal_env();
         let mode = mode.into();
         let jarr = arr.as_jarray();
@@ -1567,6 +1601,8 @@ impl JNIEnv {
         unsafe {
             env.release_primitive_array_critical(jarr.borrow_ptr(), slice.borrow_ptr(), mode)
         }
+
+        Ok(())
     }
 
     /// Create a new weak global reference to an object. This reference only lives as long as other,

@@ -9,21 +9,28 @@ use std::error;
 /// action caused Java to begin throwing an error
 #[derive(Debug)]
 pub enum Error {
-    /// JNI error raised from a different error type
+    /// JNI error returned from a different error type
     Induced(Box<dyn error::Error>),
-    /// JNI error raised with a message and code
+    /// JNI error returned with a message and code
     General(String, i32),
+    /// JNI error returned when a pointer is null
+    NullPointer(String)
 }
 
 impl Error {
 
-    /// Create a new error, with a messge and numeric code
+    /// Create a new error, with a message and numeric code
     pub fn new(msg: &str, code: i32) -> Error {
         match code {
             _ => {
                 Error::General(String::from(msg), code)
             }
         }
+    }
+
+    /// Create a new null-pointer error, with a message
+    pub fn new_null(ctx: &str) -> Error {
+        Error::NullPointer(String::from(ctx))
     }
 
     /// Create a new error, based on an existing [error::Error]
@@ -40,6 +47,9 @@ impl Display for Error {
                 write!(f, "Error in JVM: message \"{}\", code {}", msg, code),
             Error::Induced(e) => {
                 write!(f, "Error occurred in JNI, source: {}", e)
+            }
+            Error::NullPointer(context) => {
+                write!(f, "Error in JNI: Pointer was null in {}", context)
             }
         }
     }

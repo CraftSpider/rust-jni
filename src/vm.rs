@@ -22,7 +22,7 @@ impl JavaVM {
     /// Build a JVM instance from a version and pointer
     pub fn new(version: JNIVersion, vm: *mut ffi::JavaVM, owned: bool) -> Result<JavaVM, Error> {
         if vm.is_null() {
-            Err(Error::new("JavaVM must be constructed from non-null pointer", ffi::constants::JNI_ERR))
+            Err(Error::new_null("JavaVM Constructor"))
         } else {
             Ok(JavaVM {
                 version,
